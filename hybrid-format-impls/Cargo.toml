@@ -1,0 +1,8 @@
+[package]
+name = "hybrid-format-impls"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+lexical-core = "1.0.6"
+zmij = "1.0.23"
