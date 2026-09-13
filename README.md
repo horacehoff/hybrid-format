@@ -4,3 +4,14 @@ The whole idea of `hformat` is to do as much of the work at compilation time as 
 
 Literals and const blocks are automatically inlined. Variables with `SCREAMING_SNAKE_CASE` names are treated as constants and are automatically inlined.
 Anything else needs to be wrapped in a `const {...}` block to be treated as a constant.
+
+If the macro only contains constants, it returns a constant `&str`, otherwise it returns a `String`.
+
+## Benchmarks
+| Benchmark    | `std::format!` | `hformat!` | Speedup compared from `std::format!` |
+| -------- | ------- | ------- | ------- |
+| constant  | 13400ps | 311.2ps | 43x |
+| all_dynamic | 117ns | 36ns | 3.25x |
+| ten_const_ten_dynamic | 465.6ns | 102.7ns | 4.5x |
+
+Ad astra per aspera!

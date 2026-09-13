@@ -1,6 +1,7 @@
 pub trait Formatted {
-    /// Needs to be exact or an upper bound.
+    /// The size of the object when formatted in bytes. Needs to be exact or an upper bound.
     fn size(&self) -> usize;
+    /// Appends the formatted object to `buf`. `buf` is guaranteed to have enough capacity.
     fn append(&self, buf: &mut String);
 }
 
@@ -27,6 +28,7 @@ pub unsafe fn push_str_unchecked(src: &mut String, string: &str) {
 pub mod __private {
     use crate::Formatted;
     use crate::HybridFormat;
+    use crate::push_str_unchecked;
     use lexical_core::FormattedSize;
 
     impl Formatted for &str {
@@ -36,7 +38,7 @@ pub mod __private {
         }
         #[inline]
         fn append(&self, buf: &mut String) {
-            buf.push_str(self);
+            unsafe { push_str_unchecked(buf, self) }
         }
     }
     impl HybridFormat for str {
@@ -91,11 +93,22 @@ pub mod __private {
     impl Formatted for FormattedChar {
         #[inline]
         fn size(&self) -> usize {
-            self.0.len_utf8()
+            4
         }
         #[inline]
         fn append(&self, buf: &mut String) {
-            buf.push(self.0);
+            let mut temp_char_buf = [0u8; 4];
+            let char_len = self.0.encode_utf8(&mut temp_char_buf).len();
+            let buf_len = buf.len();
+            debug_assert!(4 <= buf.capacity() - buf_len);
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    temp_char_buf.as_ptr(),
+                    buf.as_mut_ptr().add(buf_len),
+                    4,
+                );
+                buf.as_mut_vec().set_len(buf_len + char_len);
+            }
         }
     }
     impl HybridFormat for char {
@@ -120,7 +133,7 @@ pub mod __private {
         }
         #[inline]
         fn append(&self, buf: &mut String) {
-            buf.push_str(zmij::Buffer::new().format(self.0));
+            unsafe { push_str_unchecked(buf, zmij::Buffer::new().format(self.0)) }
         }
     }
     impl Formatted for FormattedFloat<f32> {
@@ -130,7 +143,7 @@ pub mod __private {
         }
         #[inline]
         fn append(&self, buf: &mut String) {
-            buf.push_str(zmij::Buffer::new().format(self.0));
+            unsafe { push_str_unchecked(buf, zmij::Buffer::new().format(self.0)) }
         }
     }
     impl HybridFormat for f64 {
