@@ -55,6 +55,19 @@ fn format_literal(expr: &Expr) -> Option<LitStr> {
     }
 }
 
+fn is_probably_const(expr: &Expr) -> bool {
+    if let Expr::Path(path) = expr
+        && let Some(name) = path.path.segments.last()
+    {
+        name.ident
+            .to_string()
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+    } else {
+        false
+    }
+}
+
 fn format_expr(expr: &Expr) -> proc_macro2::TokenStream {
     if let Some(literal) = format_literal(expr) {
         quote!(#literal)
@@ -65,6 +78,7 @@ fn format_expr(expr: &Expr) -> proc_macro2::TokenStream {
                 _ => quote! { #expr },
             },
             Expr::Const(_) => quote! { #expr },
+            Expr::Path(_) if is_probably_const(expr) => quote!(#expr),
             _ => quote! { { #expr } },
         }
     }

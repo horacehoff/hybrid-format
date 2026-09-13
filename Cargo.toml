@@ -5,3 +5,8 @@ members = [
     "hybrid-format-impls",
 ]
 resolver = "3"
+
+[profile.bench]
+codegen-units=1
+opt-level=3
+lto = "thin"

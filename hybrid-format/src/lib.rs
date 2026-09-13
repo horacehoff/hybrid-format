@@ -1,4 +1,5 @@
 pub use hybrid_format_impls::HybridFormat;
+pub use hybrid_format_macros::hformat;
 
 #[doc(hidden)]
 pub mod __private {
@@ -12,15 +13,15 @@ macro_rules! __hformat_internal {
     // a dynamic (runtime) item with some elements after
     ([$buffer:ident] [$($pending_static_elems: tt)*] [$($capacity_expr: tt)*] [$($add_to_str_statements: tt)*] {$dynamic_elem: expr}, $($remaining:tt)*) => {{
         let _temp_formatted: &str = $crate::__private::const_format::concatcp!($($pending_static_elems)*);
-        let _dynamic_elem = $dynamic_elem;
+        let _dynamic_elem = &$dynamic_elem;
         $crate::__hformat_internal!(
             [$buffer]
             []
-            [$($capacity_expr)* + _temp_formatted.len() + $crate::HybridFormat::formatted_size(&_dynamic_elem)]
+            [$($capacity_expr)* + _temp_formatted.len() + $crate::HybridFormat::formatted_size(_dynamic_elem)]
             [$(
                 $add_to_str_statements)*
                 $buffer.push_str(_temp_formatted);
-                $crate::HybridFormat::append(&_dynamic_elem, $buffer);
+                $crate::HybridFormat::append(_dynamic_elem, $buffer);
             ]
             $($remaining)*
         )
@@ -28,15 +29,15 @@ macro_rules! __hformat_internal {
     // a dynamic (runtime) item with no elements after (the last one), allows a trailing comma
     ([$buffer:ident] [$($pending_static_elems: tt)*] [$($capacity_expr: tt)*] [$($add_to_str_statements: tt)*] {$dynamic_elem: expr} $(,)?) => {{
         let _temp_formatted: &str = $crate::__private::const_format::concatcp!($($pending_static_elems)*);
-        let _dynamic_elem = $dynamic_elem;
+        let _dynamic_elem = &$dynamic_elem;
         $crate::__hformat_internal!(
             [$buffer]
             []
-            [$($capacity_expr)* + _temp_formatted.len() + $crate::HybridFormat::formatted_size(&_dynamic_elem)]
+            [$($capacity_expr)* + _temp_formatted.len() + $crate::HybridFormat::formatted_size(_dynamic_elem)]
             [$(
                 $add_to_str_statements)*
                 $buffer.push_str(_temp_formatted);
-                $crate::HybridFormat::append(&_dynamic_elem, $buffer);
+                $crate::HybridFormat::append(_dynamic_elem, $buffer);
             ]
         )
     }};
@@ -106,6 +107,6 @@ mod tests {
         let x = 4.2e5;
         assert_eq!(hformat!("Float: {x}"), format!("Float: {x}.0"));
         const B: bool = true;
-        assert_eq!(hformat!("Bool: {const{B}}"), format!("Bool: {B}"));
+        assert_eq!(hformat!("Bool: {B}"), format!("Bool: {B}"));
     }
 }

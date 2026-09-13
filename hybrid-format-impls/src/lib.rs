@@ -8,7 +8,27 @@ pub mod __private {
     use crate::HybridFormat;
     use lexical_core::FormattedSize;
 
+    impl HybridFormat for char {
+        #[inline]
+        fn formatted_size(&self) -> usize {
+            self.len_utf8()
+        }
+        #[inline]
+        fn append(&self, buf: &mut String) {
+            buf.push(*self);
+        }
+    }
     impl HybridFormat for str {
+        #[inline]
+        fn formatted_size(&self) -> usize {
+            self.len()
+        }
+        #[inline]
+        fn append(&self, buf: &mut String) {
+            buf.push_str(self);
+        }
+    }
+    impl HybridFormat for &str {
         #[inline]
         fn formatted_size(&self) -> usize {
             self.len()
