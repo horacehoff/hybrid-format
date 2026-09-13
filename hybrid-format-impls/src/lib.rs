@@ -32,7 +32,7 @@ pub mod __private {
     use lexical_core::FormattedSize;
 
     impl Formatted for &str {
-        #[inline]
+        #[inline(always)]
         fn size(&self) -> usize {
             self.len()
         }
@@ -47,7 +47,7 @@ pub mod __private {
         where
             Self: 'a;
 
-        #[inline]
+        #[inline(always)]
         fn format(&self) -> Self::Formatted<'_> {
             self
         }
@@ -58,7 +58,7 @@ pub mod __private {
         where
             Self: 'a;
 
-        #[inline]
+        #[inline(always)]
         fn format(&self) -> Self::Formatted<'_> {
             self
         }
@@ -69,36 +69,58 @@ pub mod __private {
         where
             Self: 'a;
 
-        #[inline]
+        #[inline(always)]
         fn format(&self) -> Self::Formatted<'_> {
             self.as_str()
         }
     }
+    impl Formatted for bool {
+        #[inline(always)]
+        fn size(&self) -> usize {
+            // this can only overallocate by one byte so it's worth it and avoids extra work
+            5
+        }
+        #[inline]
+        fn append(&self, buf: &mut String) {
+            let buf_len = buf.len();
+            debug_assert!(5 <= buf.capacity() - buf_len);
+            unsafe {
+                // smol micro-optimization trick
+                std::ptr::copy_nonoverlapping(
+                    if *self {
+                        b"true".as_ptr()
+                    } else {
+                        b"fals".as_ptr()
+                    },
+                    buf.as_mut_ptr().add(buf_len),
+                    4,
+                );
+                std::ptr::copy_nonoverlapping("e".as_ptr(), buf.as_mut_ptr().add(buf_len + 4), 1);
+                buf.as_mut_vec().set_len(buf_len + 5 - (*self as usize));
+            }
+        }
+    }
     impl HybridFormat for bool {
         type Formatted<'a>
-            = &'static str
+            = bool
         where
             Self: 'a;
 
-        #[inline]
+        #[inline(always)]
         fn format(&self) -> Self::Formatted<'_> {
-            if *self { "true" } else { "false" }
+            *self
         }
     }
-
-    #[repr(transparent)]
-    #[doc(hidden)]
-    pub struct FormattedChar(char);
-
-    impl Formatted for FormattedChar {
-        #[inline]
+    impl Formatted for char {
+        #[inline(always)]
         fn size(&self) -> usize {
+            // this can overallocate, but really not by a lot, and it avoids cpu work
             4
         }
         #[inline]
         fn append(&self, buf: &mut String) {
             let mut temp_char_buf = [0u8; 4];
-            let char_len = self.0.encode_utf8(&mut temp_char_buf).len();
+            let char_len = self.encode_utf8(&mut temp_char_buf).len();
             let buf_len = buf.len();
             debug_assert!(4 <= buf.capacity() - buf_len);
             unsafe {
@@ -113,12 +135,12 @@ pub mod __private {
     }
     impl HybridFormat for char {
         type Formatted<'a>
-            = FormattedChar
+            = char
         where
             Self: 'a;
-        #[inline]
+        #[inline(always)]
         fn format(&self) -> Self::Formatted<'_> {
-            FormattedChar(*self)
+            *self
         }
     }
 
@@ -127,7 +149,7 @@ pub mod __private {
     pub struct FormattedFloat<T>(T);
 
     impl Formatted for FormattedFloat<f64> {
-        #[inline]
+        #[inline(always)]
         fn size(&self) -> usize {
             24
         }
@@ -137,7 +159,7 @@ pub mod __private {
         }
     }
     impl Formatted for FormattedFloat<f32> {
-        #[inline]
+        #[inline(always)]
         fn size(&self) -> usize {
             24
         }
@@ -151,6 +173,7 @@ pub mod __private {
             = FormattedFloat<f64>
         where
             Self: 'a;
+        #[inline(always)]
         fn format(&self) -> Self::Formatted<'_> {
             FormattedFloat(*self)
         }
@@ -160,6 +183,7 @@ pub mod __private {
             = FormattedFloat<f32>
         where
             Self: 'a;
+        #[inline(always)]
         fn format(&self) -> Self::Formatted<'_> {
             FormattedFloat(*self)
         }
@@ -172,7 +196,7 @@ pub mod __private {
     macro_rules! HybridFormatInt {
         ($($t: ty )*) => {$(
             impl Formatted for FormattedInt<$t> {
-                #[inline]
+                #[inline(always)]
                 fn size(&self) -> usize {
                     <$t>::FORMATTED_SIZE_DECIMAL
                 }
@@ -189,7 +213,7 @@ pub mod __private {
             }
             impl HybridFormat for $t {
                 type Formatted<'a> = FormattedInt<$t> where Self: 'a;
-                #[inline]
+                #[inline(always)]
                 fn format(&self) -> Self::Formatted<'_> {
                     FormattedInt(*self)
                 }
