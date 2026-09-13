@@ -4,6 +4,18 @@ pub trait HybridFormat {
 }
 
 #[doc(hidden)]
+#[inline]
+pub unsafe fn push_str_unchecked(src: &mut String, string: &str) {
+    let len = src.len();
+    let string_len = string.len();
+    debug_assert!(string_len <= src.capacity() - len);
+    unsafe {
+        std::ptr::copy_nonoverlapping(string.as_ptr(), src.as_mut_ptr().add(len), string_len);
+        src.as_mut_vec().set_len(len + string_len);
+    }
+}
+
+#[doc(hidden)]
 pub mod __private {
     use crate::HybridFormat;
     use lexical_core::FormattedSize;

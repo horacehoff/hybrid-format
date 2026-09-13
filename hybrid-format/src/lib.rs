@@ -4,7 +4,7 @@ pub use hybrid_format_macros::hformat;
 #[doc(hidden)]
 pub mod __private {
     pub use const_format;
-    pub use hybrid_format_impls::HybridFormat;
+    pub use hybrid_format_impls::push_str_unchecked;
 }
 
 #[macro_export]
@@ -20,7 +20,7 @@ macro_rules! __hformat_internal {
             [$($capacity_expr)* + _temp_formatted.len() + $crate::HybridFormat::formatted_size(_dynamic_elem)]
             [$(
                 $add_to_str_statements)*
-                $buffer.push_str(_temp_formatted);
+                unsafe {$crate::__private::push_str_unchecked($buffer, _temp_formatted)};
                 $crate::HybridFormat::append(_dynamic_elem, $buffer);
             ]
             $($remaining)*
@@ -36,7 +36,7 @@ macro_rules! __hformat_internal {
             [$($capacity_expr)* + _temp_formatted.len() + $crate::HybridFormat::formatted_size(_dynamic_elem)]
             [$(
                 $add_to_str_statements)*
-                $buffer.push_str(_temp_formatted);
+                unsafe {$crate::__private::push_str_unchecked($buffer, _temp_formatted)};
                 $crate::HybridFormat::append(_dynamic_elem, $buffer);
             ]
         )
@@ -72,8 +72,8 @@ macro_rules! __hformat_internal {
             // shadowed just to give the statements a &mut String
             let $buffer = &mut $buffer;
             $($add_to_str_statements)*
+            unsafe {$crate::__private::push_str_unchecked($buffer, _temp_formatted)};
         }
-        $buffer.push_str(_temp_formatted);
         $buffer
     }};
     // the last one, it's the one that's actually called in the code
