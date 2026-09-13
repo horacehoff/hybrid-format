@@ -165,9 +165,13 @@ pub mod __private {
                 }
                 #[inline]
                 fn append(&self, buf: &mut String) {
-                    let mut buffer = [0u8; <$t>::FORMATTED_SIZE_DECIMAL];
-                    let digits = lexical_core::write(self.0, &mut buffer);
-                    buf.push_str(unsafe { str::from_utf8_unchecked(digits) });
+                    let buf_len = buf.len();
+                    let max_size = <$t>::FORMATTED_SIZE_DECIMAL;
+                    unsafe {
+                        let bytes = buf.as_mut_vec();
+                        let written_bytes = lexical_core::write(self.0, std::slice::from_raw_parts_mut(bytes.as_mut_ptr().add(buf_len), max_size)).len();
+                        buf.as_mut_vec().set_len(buf_len + written_bytes);
+                    }
                 }
             }
             impl HybridFormat for $t {
