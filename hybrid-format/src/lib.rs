@@ -1,4 +1,4 @@
-pub use hybrid_format_impls::HybridFormat;
+pub use hybrid_format_impls::{Formatted, HybridFormat};
 pub use hybrid_format_macros::hformat;
 
 #[doc(hidden)]
@@ -13,15 +13,20 @@ macro_rules! __hformat_internal {
     // a dynamic (runtime) item with some elements after
     ([$buffer:ident] [$($pending_static_elems: tt)*] [$($capacity_expr: tt)*] [$($add_to_str_statements: tt)*] {$dynamic_elem: expr}, $($remaining:tt)*) => {{
         let _temp_formatted: &str = $crate::__private::const_format::concatcp!($($pending_static_elems)*);
-        let _dynamic_elem = &$dynamic_elem;
+        let _dynamic_elem = $dynamic_elem;
+        let _dynamic_formatted = $crate::HybridFormat::format(&_dynamic_elem);
         $crate::__hformat_internal!(
             [$buffer]
             []
-            [$($capacity_expr)* + _temp_formatted.len() + $crate::HybridFormat::formatted_size(_dynamic_elem)]
+            [
+                $($capacity_expr)*
+                + _temp_formatted.len()
+                + $crate::Formatted::size(&_dynamic_formatted)
+            ]
             [$(
                 $add_to_str_statements)*
                 unsafe {$crate::__private::push_str_unchecked($buffer, _temp_formatted)};
-                $crate::HybridFormat::append(_dynamic_elem, $buffer);
+                $crate::Formatted::append(&_dynamic_formatted, $buffer);
             ]
             $($remaining)*
         )
@@ -29,15 +34,20 @@ macro_rules! __hformat_internal {
     // a dynamic (runtime) item with no elements after (the last one), allows a trailing comma
     ([$buffer:ident] [$($pending_static_elems: tt)*] [$($capacity_expr: tt)*] [$($add_to_str_statements: tt)*] {$dynamic_elem: expr} $(,)?) => {{
         let _temp_formatted: &str = $crate::__private::const_format::concatcp!($($pending_static_elems)*);
-        let _dynamic_elem = &$dynamic_elem;
+        let _dynamic_elem = $dynamic_elem;
+        let _dynamic_formatted = $crate::HybridFormat::format(&_dynamic_elem);
         $crate::__hformat_internal!(
             [$buffer]
             []
-            [$($capacity_expr)* + _temp_formatted.len() + $crate::HybridFormat::formatted_size(_dynamic_elem)]
+            [
+                $($capacity_expr)*
+                + _temp_formatted.len()
+                + $crate::Formatted::size(&_dynamic_formatted)
+            ]
             [$(
                 $add_to_str_statements)*
                 unsafe {$crate::__private::push_str_unchecked($buffer, _temp_formatted)};
-                $crate::HybridFormat::append(_dynamic_elem, $buffer);
+                $crate::Formatted::append(&_dynamic_formatted, $buffer);
             ]
         )
     }};
