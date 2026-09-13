@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 hybrid-format-macros = {path = "../hybrid-format-macros"}
 hybrid-format-impls = {path = "../hybrid-format-impls"}
+const_format = "0.2.36"
