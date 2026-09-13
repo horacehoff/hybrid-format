@@ -189,13 +189,14 @@ pub mod __private {
         }
     }
 
-    #[repr(transparent)]
-    #[doc(hidden)]
-    pub struct FormattedInt<T>(T);
+    #[inline(never)]
+    fn write_int<N: lexical_core::ToLexical>(n: N, buf: &mut [u8]) -> usize {
+        lexical_core::write(n, buf).len()
+    }
 
-    macro_rules! HybridFormatInt {
+    macro_rules! HybridFormatIntUnsigned {
         ($($t: ty )*) => {$(
-            impl Formatted for FormattedInt<$t> {
+            impl Formatted for $t {
                 #[inline(always)]
                 fn size(&self) -> usize {
                     <$t>::FORMATTED_SIZE_DECIMAL
@@ -204,23 +205,53 @@ pub mod __private {
                 fn append(&self, buf: &mut String) {
                     let buf_len = buf.len();
                     let max_size = <$t>::FORMATTED_SIZE_DECIMAL;
+                    debug_assert!(max_size <= buf.capacity() - buf_len);
                     unsafe {
-                        let bytes = buf.as_mut_vec();
-                        let written_bytes = lexical_core::write(self.0, std::slice::from_raw_parts_mut(bytes.as_mut_ptr().add(buf_len), max_size)).len();
+                        let written_bytes = write_int(*self, std::slice::from_raw_parts_mut(buf.as_mut_ptr().add(buf_len), max_size));
                         buf.as_mut_vec().set_len(buf_len + written_bytes);
                     }
                 }
             }
             impl HybridFormat for $t {
-                type Formatted<'a> = FormattedInt<$t> where Self: 'a;
+                type Formatted<'a> = $t where Self: 'a;
                 #[inline(always)]
                 fn format(&self) -> Self::Formatted<'_> {
-                    FormattedInt(*self)
+                    *self
                 }
             }
         )*
         };
     }
 
-    HybridFormatInt!(i8 i16 i32 i64 i128 isize u8 u16 u32 u64 u128 usize);
+    macro_rules! HybridFormatIntSigned {
+        ($($t: ty => $u: ty )*) => {$(
+            impl Formatted for $t {
+                #[inline(always)]
+                fn size(&self) -> usize {
+                    const {<$t>::FORMATTED_SIZE_DECIMAL + 1}
+                }
+                #[inline]
+                fn append(&self, buf: &mut String) {
+                    let buf_len = buf.len();
+                    let max_size = <$t>::FORMATTED_SIZE_DECIMAL;
+                    debug_assert!(max_size <= buf.capacity() - buf_len);
+                    unsafe {
+                        let written_bytes = write_int(*self, std::slice::from_raw_parts_mut(buf.as_mut_ptr().add(buf_len), max_size));
+                        buf.as_mut_vec().set_len(buf_len + written_bytes);
+                    }
+                }
+            }
+            impl HybridFormat for $t {
+                type Formatted<'a> = $t where Self: 'a;
+                #[inline(always)]
+                fn format(&self) -> Self::Formatted<'_> {
+                    *self
+                }
+            }
+        )*
+        };
+    }
+
+    HybridFormatIntUnsigned!(u8 u16 u32 u64 u128 usize);
+    HybridFormatIntSigned!(i8=>u8 i16=>u16 i32=>u32 i64=>u64 i128=>u128 isize=>usize);
 }
