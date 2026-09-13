@@ -56,11 +56,11 @@ dependencies = [
 name = "hybrid-format-macros"
 version = "0.1.0"
 dependencies = [
- "hybrid-format-impls",
  "proc-macro-crate",
  "proc-macro2",
  "quote",
  "syn",
+ "zmij",
 ]
 
 [[package]]

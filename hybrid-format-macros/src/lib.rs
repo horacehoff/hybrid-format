@@ -2,17 +2,17 @@ use proc_macro::TokenStream;
 use proc_macro_crate::{FoundCrate, crate_name};
 use proc_macro2::Span;
 use quote::quote;
-use syn::{Expr, Ident, LitStr, parse_macro_input};
+use syn::{Expr, Ident, Lit, LitStr, parse_macro_input};
 
 fn import_hformat() -> proc_macro2::TokenStream {
     let found_crate =
         crate_name("hybrid-format").expect("hybrid-format is present in `Cargo.toml`");
 
     match found_crate {
-        FoundCrate::Itself => quote!(crate::__private::*),
+        FoundCrate::Itself => quote!(crate),
         FoundCrate::Name(name) => {
             let ident = Ident::new(&name, Span::call_site());
-            quote!( ::#ident::__private::* )
+            quote!(::#ident)
         }
     }
 }
@@ -22,10 +22,51 @@ struct HFormatInput {
     args: syn::punctuated::Punctuated<syn::Expr, syn::Token![,]>,
 }
 
+fn format_literal(expr: &Expr) -> Option<LitStr> {
+    if let Expr::Lit(expr_literal) = expr {
+        match &expr_literal.lit {
+            Lit::Str(string) => Some(LitStr::new(&string.value(), Span::call_site())),
+            Lit::Char(c) => {
+                let mut buf = [0; 4];
+                Some(LitStr::new(
+                    c.value().encode_utf8(&mut buf),
+                    Span::call_site(),
+                ))
+            }
+            Lit::Bool(b) => Some(LitStr::new(
+                if b.value() { "true" } else { "false" },
+                Span::call_site(),
+            )),
+            Lit::Float(float) => match float.suffix() {
+                "f64" | "" => Some(LitStr::new(
+                    zmij::Buffer::new().format(float.base10_parse::<f64>().ok()?),
+                    Span::call_site(),
+                )),
+                "f32" => Some(LitStr::new(
+                    zmij::Buffer::new().format(float.base10_parse::<f32>().ok()?),
+                    Span::call_site(),
+                )),
+                _ => None,
+            },
+            _ => None,
+        }
+    } else {
+        None
+    }
+}
+
 fn format_expr(expr: &Expr) -> proc_macro2::TokenStream {
-    match expr {
-        Expr::Lit(_) | Expr::Const(_) => quote! { #expr },
-        _ => quote! { { #expr } },
+    if let Some(literal) = format_literal(expr) {
+        quote!(#literal)
+    } else {
+        match expr {
+            Expr::Lit(lit) => match &lit.lit {
+                Lit::Int(int) if int.suffix().is_empty() => quote! ((#expr as i32)),
+                _ => quote! { #expr },
+            },
+            Expr::Const(_) => quote! { #expr },
+            _ => quote! { { #expr } },
+        }
     }
 }
 
@@ -107,84 +148,7 @@ pub fn hformat(input: TokenStream) -> TokenStream {
     let hformat = import_hformat();
     quote::quote! {
         {
-            use #hformat;
-            macro_rules! __hformat_internal {
-                // a dynamic (runtime) item with some elements after
-                ([$buffer:ident] [$($pending_static_elems: tt)*] [$($capacity_expr: tt)*] [$($add_to_str_statements: tt)*] {$dynamic_elem: expr}, $($remaining:tt)*) => {{
-                    let _temp_formatted: &str = const_format::concatcp!($($pending_static_elems)*);
-                    __hformat_internal!(
-                        [$buffer]
-                        []
-                        [$($capacity_expr)* + _temp_formatted.len() + $dynamic_elem.size()]
-                        [$(
-                            $add_to_str_statements)*
-                            $buffer.push_str_unchecked(_temp_formatted);
-                            ($dynamic_elem).append($buffer);
-                        ]
-                        $($remaining)*
-                    )
-                }};
-                // a dynamic (runtime) item with no elements after (the last one), allows a trailing comma
-                ([$buffer:ident] [$($pending_static_elems: tt)*] [$($capacity_expr: tt)*] [$($add_to_str_statements: tt)*] {$dynamic_elem: expr} $(,)?) => {{
-                    let _temp_formatted: &str = const_format::concatcp!($($pending_static_elems)*);
-                    __hformat_internal!(
-                        [$buffer]
-                        []
-                        [$($capacity_expr)* + _temp_formatted.len() + $dynamic_elem.size()]
-                        [$(
-                            $add_to_str_statements)*
-                            $buffer.push_str(_temp_formatted);
-                            ($dynamic_elem).append($buffer);
-                        ]
-                    )
-                }};
-                // static item with some elements after
-                ([$buffer:ident] [$($pending_static_elems: tt)*] [$($capacity_expr: tt)*] [$($add_to_str_statements: tt)*] $static_elem: expr, $($remaining:tt)*) => {{
-                    __hformat_internal!(
-                        [$buffer]
-                        [$($pending_static_elems)* $static_elem,]
-                        [$($capacity_expr)*]
-                        [$($add_to_str_statements)*]
-                        $($remaining)*
-                    )
-                }};
-                // static item with no elements after
-                ([$buffer:ident] [$($pending_static_elems: tt)*] [$($capacity_expr: tt)*] [$($add_to_str_statements: tt)*] $static_elem: expr $(,)?) => {{
-                    __hformat_internal!(
-                        [$buffer]
-                        [$($pending_static_elems)* $static_elem,]
-                        [$($capacity_expr)*]
-                        [$($add_to_str_statements)*]
-                    )
-                }};
-                // pure const
-                ([$buffer:ident] [$($pending_static_elems: tt)*] [$($capacity_expr: tt)*] []) => {
-                    const_format::concatcp!($($pending_static_elems)*)
-                };
-                // runtime/const hybrid
-                ([$buffer:ident] [$($pending_static_elems: tt)*] [$($capacity_expr: tt)*] [$($add_to_str_statements: tt)*]) => {{
-                    let _temp_formatted: &str = const_format::concatcp!($($pending_static_elems)*);
-                    let mut $buffer = String::with_capacity($($capacity_expr)* + _temp_formatted.len());
-                    {
-                        // shadowed just to give the statements a &mut String
-                        let $buffer = &mut $buffer;
-                        $($add_to_str_statements)*
-                    }
-                    $buffer.push_str(_temp_formatted);
-                    $buffer
-                }};
-                // the last one, it's the one that's actually called in the code
-                ($($elems: tt)*) => {
-                    __hformat_internal!(
-                        [buf]
-                        []
-                        [0usize]
-                        []
-                        $($elems)*
-                    )
-                };
-            }
-            __hformat_internal!(#(#format_tokens),*)
+            #hformat::__hformat_internal!(#(#format_tokens),*)
         }
     }
     .into()

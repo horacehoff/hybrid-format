@@ -1,15 +1,26 @@
+pub trait HybridFormat {
+    fn formatted_size(&self) -> usize;
+    fn append(&self, buf: &mut String);
+}
+
 #[doc(hidden)]
 pub mod __private {
+    use crate::HybridFormat;
     use lexical_core::FormattedSize;
-
-    pub trait HybridFormat {
-        fn size(&self) -> usize;
-        fn append(&self, buf: &mut String);
-    }
 
     impl HybridFormat for str {
         #[inline]
-        fn size(&self) -> usize {
+        fn formatted_size(&self) -> usize {
+            self.len()
+        }
+        #[inline]
+        fn append(&self, buf: &mut String) {
+            buf.push_str(self);
+        }
+    }
+    impl HybridFormat for String {
+        #[inline]
+        fn formatted_size(&self) -> usize {
             self.len()
         }
         #[inline]
@@ -19,7 +30,7 @@ pub mod __private {
     }
     impl HybridFormat for bool {
         #[inline]
-        fn size(&self) -> usize {
+        fn formatted_size(&self) -> usize {
             5
         }
         #[inline]
@@ -27,9 +38,19 @@ pub mod __private {
             buf.push_str(if *self { "true" } else { "false" });
         }
     }
+    impl HybridFormat for f32 {
+        #[inline]
+        fn formatted_size(&self) -> usize {
+            24
+        }
+        #[inline]
+        fn append(&self, buf: &mut String) {
+            buf.push_str(zmij::Buffer::new().format(*self));
+        }
+    }
     impl HybridFormat for f64 {
         #[inline]
-        fn size(&self) -> usize {
+        fn formatted_size(&self) -> usize {
             24
         }
         #[inline]
@@ -41,7 +62,7 @@ pub mod __private {
         ($($t: ty )*) => {$(
             impl HybridFormat for $t {
                 #[inline]
-                fn size(&self) -> usize {
+                fn formatted_size(&self) -> usize {
                     Self::FORMATTED_SIZE_DECIMAL
                 }
                 #[inline]

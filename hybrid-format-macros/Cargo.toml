@@ -10,5 +10,5 @@ proc-macro = true
 proc-macro-crate = "3.5.0"
 quote = "1.0.47"
 syn = {version="3.0.5",features=["full"]}
-hybrid-format-impls = {path= "../hybrid-format-impls/"}
 proc-macro2 = "1.0.107"
+zmij = "1.0.23"
