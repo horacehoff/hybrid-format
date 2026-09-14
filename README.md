@@ -12,6 +12,6 @@ If the macro only contains constants, it returns a constant `&str`, otherwise it
 | -------- | ------- | ------- | ------- |
 | constant  | 13400ps | 311.2ps | 43x |
 | all_dynamic | 117ns | 36ns | 3.25x |
-| ten_const_ten_dynamic | 465.6ns | 102.7ns | 4.5x |
+| ten_const_ten_dynamic | 446.8ns | 63.8ns | 7x |
 
 Ad astra per aspera!

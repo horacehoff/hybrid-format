@@ -224,20 +224,25 @@ pub mod __private {
     }
 
     macro_rules! HybridFormatIntSigned {
-        ($($t: ty => $u: ty )*) => {$(
+        ($({$t:ty, $u:ty, $offset:expr})*) => {$(
             impl Formatted for $t {
                 #[inline(always)]
                 fn size(&self) -> usize {
-                    const {<$t>::FORMATTED_SIZE_DECIMAL + 1}
+                    // fixes some sizes
+                    const {<$u>::FORMATTED_SIZE_DECIMAL + $offset}
                 }
                 #[inline]
                 fn append(&self, buf: &mut String) {
                     let buf_len = buf.len();
-                    let max_size = <$t>::FORMATTED_SIZE_DECIMAL;
-                    debug_assert!(max_size <= buf.capacity() - buf_len);
+                    let max_size = <$u>::FORMATTED_SIZE_DECIMAL;
+                    debug_assert!(max_size+1 <= buf.capacity() - buf_len);
                     unsafe {
-                        let written_bytes = write_int(*self, std::slice::from_raw_parts_mut(buf.as_mut_ptr().add(buf_len), max_size));
-                        buf.as_mut_vec().set_len(buf_len + written_bytes);
+                        // asm (on arm64) output shows that this is the smallest and fastest option
+                        let buf_ptr = buf.as_mut_ptr().add(buf_len);
+                        buf_ptr.write(b'-');
+                        let is_int_neg = (*self < 0) as usize;
+                        let written_bytes = write_int(self.unsigned_abs(), std::slice::from_raw_parts_mut(buf_ptr.add(is_int_neg), max_size));
+                        buf.as_mut_vec().set_len(buf_len + written_bytes + is_int_neg);
                     }
                 }
             }
@@ -253,5 +258,5 @@ pub mod __private {
     }
 
     HybridFormatIntUnsigned!(u8 u16 u32 u64 u128 usize);
-    HybridFormatIntSigned!(i8=>u8 i16=>u16 i32=>u32 i64=>u64 i128=>u128 isize=>usize);
+    HybridFormatIntSigned!({i8,u8,0} {i16,u16,0} {i32,u32,0} {i64,u64,1} {i128,u128,0} {isize,usize,1});
 }

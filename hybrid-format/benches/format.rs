@@ -41,17 +41,17 @@ fn format_benchmarks(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("ten_const_ten_dynamic");
     let a = 4.2e10;
-    let b1 = 6.7e10;
+    let b1 = -67924034;
     let c = true;
     let d = false;
-    let e = 42 * 1000;
+    let e = -42 * 1000;
     let f = "Hello,";
     let g = ", world!";
     let h = 'x';
     let i = false;
     let j = "123456789123456789123456789123456789";
     const A: u8 = 42;
-    const B: u8 = 67;
+    const B: u16 = 67;
     // const A: f64 = 4.2e10;
     // const B: f64 = 6.7e10;
     const C: bool = true;
