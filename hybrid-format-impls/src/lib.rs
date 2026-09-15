@@ -9,6 +9,7 @@ pub trait HybridFormat {
     type Formatted<'a>: Formatted
     where
         Self: 'a;
+    /// Formats the object into an intermediate representation, that can be borrowed.
     fn format(&self) -> Self::Formatted<'_>;
 }
 
@@ -224,12 +225,12 @@ pub mod __private {
     }
 
     macro_rules! HybridFormatIntSigned {
-        ($({$t:ty, $u:ty, $offset:expr})*) => {$(
+        ($({$t:ty, $u:ty})*) => {$(
             impl Formatted for $t {
                 #[inline(always)]
                 fn size(&self) -> usize {
                     // fixes some sizes
-                    const {<$u>::FORMATTED_SIZE_DECIMAL + $offset}
+                    const {<$u>::FORMATTED_SIZE_DECIMAL + 1}
                 }
                 #[inline]
                 fn append(&self, buf: &mut String) {
@@ -258,5 +259,5 @@ pub mod __private {
     }
 
     HybridFormatIntUnsigned!(u8 u16 u32 u64 u128 usize);
-    HybridFormatIntSigned!({i8,u8,0} {i16,u16,0} {i32,u32,0} {i64,u64,1} {i128,u128,0} {isize,usize,1});
+    HybridFormatIntSigned!({i8,u8} {i16,u16} {i32,u32} {i64,u64} {i128,u128} {isize,usize});
 }

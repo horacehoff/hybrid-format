@@ -13,8 +13,8 @@ macro_rules! __hformat_internal {
     // a dynamic (runtime) item with some elements after
     ([$buffer:ident] [$($pending_static_elems: tt)*] [$($capacity_expr: tt)*] [$($add_to_str_statements: tt)*] {$dynamic_elem: expr}, $($remaining:tt)*) => {{
         let _temp_formatted: &str = $crate::__private::const_format::concatcp!($($pending_static_elems)*);
-        let _dynamic_elem = $dynamic_elem;
-        let _dynamic_formatted = $crate::HybridFormat::format(&_dynamic_elem);
+        let _dynamic_elem = &$dynamic_elem;
+        let _dynamic_formatted = $crate::HybridFormat::format(_dynamic_elem);
         $crate::__hformat_internal!(
             [$buffer]
             []
@@ -34,8 +34,8 @@ macro_rules! __hformat_internal {
     // a dynamic (runtime) item with no elements after (the last one), allows a trailing comma
     ([$buffer:ident] [$($pending_static_elems: tt)*] [$($capacity_expr: tt)*] [$($add_to_str_statements: tt)*] {$dynamic_elem: expr} $(,)?) => {{
         let _temp_formatted: &str = $crate::__private::const_format::concatcp!($($pending_static_elems)*);
-        let _dynamic_elem = $dynamic_elem;
-        let _dynamic_formatted = $crate::HybridFormat::format(&_dynamic_elem);
+        let _dynamic_elem = &$dynamic_elem;
+        let _dynamic_formatted = $crate::HybridFormat::format(_dynamic_elem);
         $crate::__hformat_internal!(
             [$buffer]
             []
@@ -117,6 +117,6 @@ mod tests {
         let x = 4.2e5;
         assert_eq!(hformat!("Float: {x}"), format!("Float: {x}.0"));
         const B: bool = true;
-        assert_eq!(hformat!("Bool: {B}"), format!("Bool: {B}"));
+        assert_eq!(const { hformat!("Bool: {B}") }, format!("Bool: {B}"));
     }
 }

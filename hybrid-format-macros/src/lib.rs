@@ -116,6 +116,11 @@ pub fn hformat(input: TokenStream) -> TokenStream {
                     format_tokens.push(quote! { #temp_str });
                     temp_str.clear();
                 }
+                if input_chars.peek() == Some(&'{') {
+                    input_chars.next();
+                    temp_str.push(c);
+                    continue;
+                }
                 if input_chars.peek() == Some(&'}') {
                     input_chars.next();
                     let arg = &args[arg_idx];
