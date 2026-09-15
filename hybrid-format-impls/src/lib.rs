@@ -1,10 +1,17 @@
-pub trait Formatted {
-    /// The size of the object when formatted in bytes. Needs to be exact or an upper bound.
+/// A not-yet-formatted value, that knows its formatted size, and can format(write) itself into a buffer without any reallocations.
+/// # Safety
+/// It is up to you to make sure that `size()` returns the exact or maximum size of your object when formatted (in bytes)!
+/// `append()` uses this assumption to skip checks and avoid reallocation.
+pub unsafe trait Formatted {
+    /// The size of the object when formatted in bytes. Needs to be exact or at least an upper bound.
     fn size(&self) -> usize;
-    /// Appends the formatted object to `buf`. `buf` is guaranteed to have enough capacity.
-    fn append(&self, buf: &mut String);
+    /// Appends the formatted object to `buf`.
+    /// # Safety
+    /// This assumes `buf` still has at least `size()` bytes of remaining capacity.
+    unsafe fn append(&self, buf: &mut String);
 }
 
+/// Converts an argument into an intermediate representation (that can be borrowed) that implements `Formatted`, that can then be formatted.
 pub trait HybridFormat {
     type Formatted<'a>: Formatted
     where
@@ -15,6 +22,9 @@ pub trait HybridFormat {
 
 #[doc(hidden)]
 #[inline]
+/// Pushes `string` into `src` without checking capacity.
+/// # Safety
+/// Just make sure `src` has at least `string.len()` bytes of remaining capacity.
 pub unsafe fn push_str_unchecked(src: &mut String, string: &str) {
     let len = src.len();
     let string_len = string.len();
@@ -32,13 +42,13 @@ pub mod __private {
     use crate::push_str_unchecked;
     use lexical_core::FormattedSize;
 
-    impl Formatted for &str {
+    unsafe impl Formatted for &str {
         #[inline(always)]
         fn size(&self) -> usize {
             self.len()
         }
         #[inline]
-        fn append(&self, buf: &mut String) {
+        unsafe fn append(&self, buf: &mut String) {
             unsafe { push_str_unchecked(buf, self) }
         }
     }
@@ -75,14 +85,14 @@ pub mod __private {
             self.as_str()
         }
     }
-    impl Formatted for bool {
+    unsafe impl Formatted for bool {
         #[inline(always)]
         fn size(&self) -> usize {
             // this can only overallocate by one byte so it's worth it and avoids extra work
             5
         }
         #[inline]
-        fn append(&self, buf: &mut String) {
+        unsafe fn append(&self, buf: &mut String) {
             let buf_len = buf.len();
             debug_assert!(5 <= buf.capacity() - buf_len);
             unsafe {
@@ -112,14 +122,14 @@ pub mod __private {
             *self
         }
     }
-    impl Formatted for char {
+    unsafe impl Formatted for char {
         #[inline(always)]
         fn size(&self) -> usize {
             // this can overallocate, but really not by a lot, and it avoids cpu work
             4
         }
         #[inline]
-        fn append(&self, buf: &mut String) {
+        unsafe fn append(&self, buf: &mut String) {
             let mut temp_char_buf = [0u8; 4];
             let char_len = self.encode_utf8(&mut temp_char_buf).len();
             let buf_len = buf.len();
@@ -145,48 +155,44 @@ pub mod __private {
         }
     }
 
-    #[repr(transparent)]
-    #[doc(hidden)]
-    pub struct FormattedFloat<T>(T);
-
-    impl Formatted for FormattedFloat<f64> {
+    unsafe impl Formatted for f64 {
         #[inline(always)]
         fn size(&self) -> usize {
             24
         }
         #[inline]
-        fn append(&self, buf: &mut String) {
-            unsafe { push_str_unchecked(buf, zmij::Buffer::new().format(self.0)) }
+        unsafe fn append(&self, buf: &mut String) {
+            unsafe { push_str_unchecked(buf, zmij::Buffer::new().format(*self)) }
         }
     }
-    impl Formatted for FormattedFloat<f32> {
+    unsafe impl Formatted for f32 {
         #[inline(always)]
         fn size(&self) -> usize {
             24
         }
         #[inline]
-        fn append(&self, buf: &mut String) {
-            unsafe { push_str_unchecked(buf, zmij::Buffer::new().format(self.0)) }
+        unsafe fn append(&self, buf: &mut String) {
+            unsafe { push_str_unchecked(buf, zmij::Buffer::new().format(*self)) }
         }
     }
     impl HybridFormat for f64 {
         type Formatted<'a>
-            = FormattedFloat<f64>
+            = f64
         where
             Self: 'a;
         #[inline(always)]
         fn format(&self) -> Self::Formatted<'_> {
-            FormattedFloat(*self)
+            *self
         }
     }
     impl HybridFormat for f32 {
         type Formatted<'a>
-            = FormattedFloat<f32>
+            = f32
         where
             Self: 'a;
         #[inline(always)]
         fn format(&self) -> Self::Formatted<'_> {
-            FormattedFloat(*self)
+            *self
         }
     }
 
@@ -197,13 +203,13 @@ pub mod __private {
 
     macro_rules! HybridFormatIntUnsigned {
         ($($t: ty )*) => {$(
-            impl Formatted for $t {
+            unsafe impl Formatted for $t {
                 #[inline(always)]
                 fn size(&self) -> usize {
                     <$t>::FORMATTED_SIZE_DECIMAL
                 }
                 #[inline]
-                fn append(&self, buf: &mut String) {
+                unsafe fn append(&self, buf: &mut String) {
                     let buf_len = buf.len();
                     let max_size = <$t>::FORMATTED_SIZE_DECIMAL;
                     debug_assert!(max_size <= buf.capacity() - buf_len);
@@ -226,14 +232,14 @@ pub mod __private {
 
     macro_rules! HybridFormatIntSigned {
         ($({$t:ty, $u:ty})*) => {$(
-            impl Formatted for $t {
+            unsafe impl Formatted for $t {
                 #[inline(always)]
                 fn size(&self) -> usize {
                     // fixes some sizes
                     const {<$u>::FORMATTED_SIZE_DECIMAL + 1}
                 }
                 #[inline]
-                fn append(&self, buf: &mut String) {
+                unsafe fn append(&self, buf: &mut String) {
                     let buf_len = buf.len();
                     let max_size = <$u>::FORMATTED_SIZE_DECIMAL;
                     debug_assert!(max_size+1 <= buf.capacity() - buf_len);

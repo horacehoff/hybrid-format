@@ -26,7 +26,7 @@ macro_rules! __hformat_internal {
             [$(
                 $add_to_str_statements)*
                 unsafe {$crate::__private::push_str_unchecked($buffer, _temp_formatted)};
-                $crate::Formatted::append(&_dynamic_formatted, $buffer);
+                unsafe {$crate::Formatted::append(&_dynamic_formatted, $buffer)};
             ]
             $($remaining)*
         )
@@ -47,7 +47,7 @@ macro_rules! __hformat_internal {
             [$(
                 $add_to_str_statements)*
                 unsafe {$crate::__private::push_str_unchecked($buffer, _temp_formatted)};
-                $crate::Formatted::append(&_dynamic_formatted, $buffer);
+                unsafe {$crate::Formatted::append(&_dynamic_formatted, $buffer)};
             ]
         )
     }};

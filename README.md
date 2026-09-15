@@ -10,18 +10,25 @@ If the macro only contains constants, it returns a constant `&str`, otherwise it
 
 Two traits are used:
 ```rust
-pub trait Formatted {
-    /// The size of the object when formatted in bytes. Needs to be exact or an upper bound.
+/// A not-yet-formatted value, that knows its formatted size, and can format(write) itself into a buffer without any reallocations.
+/// # Safety
+/// It is up to you to make sure that `size()` returns the exact or maximum size of your object when formatted (in bytes)!
+/// `append()` uses this assumption to skip checks and avoid reallocation.
+pub unsafe trait Formatted {
+    /// The size of the object when formatted in bytes. Needs to be exact or at least an upper bound.
     fn size(&self) -> usize;
-    /// Appends the formatted object to `buf`. `buf` is guaranteed to have enough capacity.
-    fn append(&self, buf: &mut String);
+    /// Appends the formatted object to `buf`.
+    /// # Safety
+    /// This assumes `buf` still has at least `size()` bytes of remaining capacity.
+    unsafe fn append(&self, buf: &mut String);
 }
 
+/// Converts an argument into an intermediate representation (that can be borrowed) that implements `Formatted`, that can then be formatted.
 pub trait HybridFormat {
     type Formatted<'a>: Formatted
     where
         Self: 'a;
-    /// Formats the object into an intermediate representation that can be borrowed.
+    /// Formats the object into an intermediate representation, that can be borrowed.
     fn format(&self) -> Self::Formatted<'_>;
 }
 ```
@@ -42,7 +49,23 @@ The built-in implementations try to be as fast as possible.
 - `f32`/`f64` consts need to be annotated with `as f32`/`as f64`
 - Floats with zero decimal places are formatted with a trailing zero
 
-The goal is to eventually fully support [https://doc.rust-lang.org/std/fmt/index.html](https://doc.rust-lang.org/std/fmt/index.html)
+The goal is to eventually fully support [https://doc.rust-lang.org/std/fmt/index.html](https://doc.rust-lang.org/std/fmt/index.html):
+```
+format_string := text [ maybe_format text ] *
+maybe_format := '{' '{' | '}' '}' | format
+format := '{' [ argument ] [ ':' format_spec ] [ ws ] * '}'
+argument := integer | identifier
+
+format_spec := [[fill]align][sign]['#']['0'][width]['.' precision][type]
+fill := character
+align := '<' | '^' | '>'
+sign := '+' | '-'
+width := count
+precision := count | '*'
+type := '?' | 'x?' | 'X?' | 'o' | 'x' | 'X' | 'p' | 'b' | 'e' | 'E'
+count := parameter | integer
+parameter := argument '$'
+```
 
 ## Usage
 ```rust
@@ -70,7 +93,7 @@ assert_eq!(const { hformat!("Bool: {B}") }, format!("Bool: {B}"));
 ## Benchmarks
 | Benchmark    | `std::format!` | `hformat!` | Speedup compared from `std::format!` |
 | -------- | ------- | ------- | ------- |
-| constant  | 13400ps | 311.2ps | 43x |
+| constant  | 13400ps | 311.2ps (just a &'static str) | 43x |
 | all_dynamic | 117ns | 36ns | 3.25x |
 | ten_const_ten_dynamic | 446.8ns | 63.8ns | 7x |
 
