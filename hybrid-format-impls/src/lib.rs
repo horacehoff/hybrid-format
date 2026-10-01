@@ -1,3 +1,5 @@
+pub mod const_args;
+
 /// A not-yet-formatted value, that knows its formatted size, and can format(write) itself into a buffer without any reallocations.
 /// # Safety
 /// It is up to you to make sure that `size()` returns the exact or maximum size of your object when formatted (in bytes)!
@@ -30,7 +32,7 @@ pub unsafe fn push_str_unchecked(src: &mut String, string: &str) {
     let string_len = string.len();
     debug_assert!(string_len <= src.capacity() - len);
     unsafe {
-        std::ptr::copy_nonoverlapping(string.as_ptr(), src.as_mut_ptr().add(len), string_len);
+        core::ptr::copy_nonoverlapping(string.as_ptr(), src.as_mut_ptr().add(len), string_len);
         src.as_mut_vec().set_len(len + string_len);
     }
 }
@@ -54,7 +56,7 @@ pub mod __private {
     }
     impl HybridFormat for str {
         type Formatted<'a>
-            = &'a str
+            = &'a Self
         where
             Self: 'a;
 
@@ -97,7 +99,7 @@ pub mod __private {
             debug_assert!(5 <= buf.capacity() - buf_len);
             unsafe {
                 // smol micro-optimization trick
-                std::ptr::copy_nonoverlapping(
+                core::ptr::copy_nonoverlapping(
                     if *self {
                         b"true".as_ptr()
                     } else {
@@ -106,14 +108,14 @@ pub mod __private {
                     buf.as_mut_ptr().add(buf_len),
                     4,
                 );
-                std::ptr::copy_nonoverlapping("e".as_ptr(), buf.as_mut_ptr().add(buf_len + 4), 1);
-                buf.as_mut_vec().set_len(buf_len + 5 - (*self as usize));
+                core::ptr::copy_nonoverlapping("e".as_ptr(), buf.as_mut_ptr().add(buf_len + 4), 1);
+                buf.as_mut_vec().set_len(buf_len + 5 - usize::from(*self));
             }
         }
     }
     impl HybridFormat for bool {
         type Formatted<'a>
-            = bool
+            = Self
         where
             Self: 'a;
 
@@ -135,7 +137,7 @@ pub mod __private {
             let buf_len = buf.len();
             debug_assert!(4 <= buf.capacity() - buf_len);
             unsafe {
-                std::ptr::copy_nonoverlapping(
+                core::ptr::copy_nonoverlapping(
                     temp_char_buf.as_ptr(),
                     buf.as_mut_ptr().add(buf_len),
                     4,
@@ -146,7 +148,7 @@ pub mod __private {
     }
     impl HybridFormat for char {
         type Formatted<'a>
-            = char
+            = Self
         where
             Self: 'a;
         #[inline(always)]
@@ -177,7 +179,7 @@ pub mod __private {
     }
     impl HybridFormat for f64 {
         type Formatted<'a>
-            = f64
+            = Self
         where
             Self: 'a;
         #[inline(always)]
@@ -187,7 +189,7 @@ pub mod __private {
     }
     impl HybridFormat for f32 {
         type Formatted<'a>
-            = f32
+            = Self
         where
             Self: 'a;
         #[inline(always)]
@@ -210,11 +212,11 @@ pub mod __private {
                 }
                 #[inline]
                 unsafe fn append(&self, buf: &mut String) {
+                    const MAX_SIZE: usize = <$t>::FORMATTED_SIZE_DECIMAL;
                     let buf_len = buf.len();
-                    let max_size = <$t>::FORMATTED_SIZE_DECIMAL;
-                    debug_assert!(max_size <= buf.capacity() - buf_len);
+                    debug_assert!(MAX_SIZE <= buf.capacity() - buf_len);
                     unsafe {
-                        let written_bytes = write_int(*self, std::slice::from_raw_parts_mut(buf.as_mut_ptr().add(buf_len), max_size));
+                        let written_bytes = write_int(*self, core::slice::from_raw_parts_mut(buf.as_mut_ptr().add(buf_len), MAX_SIZE));
                         buf.as_mut_vec().set_len(buf_len + written_bytes);
                     }
                 }
@@ -240,15 +242,15 @@ pub mod __private {
                 }
                 #[inline]
                 unsafe fn append(&self, buf: &mut String) {
+                    const MAX_SIZE: usize = <$u>::FORMATTED_SIZE_DECIMAL;
                     let buf_len = buf.len();
-                    let max_size = <$u>::FORMATTED_SIZE_DECIMAL;
-                    debug_assert!(max_size+1 <= buf.capacity() - buf_len);
+                    debug_assert!(MAX_SIZE < buf.capacity() - buf_len);
                     unsafe {
                         // asm (on arm64) output shows that this is the smallest and fastest option
                         let buf_ptr = buf.as_mut_ptr().add(buf_len);
                         buf_ptr.write(b'-');
-                        let is_int_neg = (*self < 0) as usize;
-                        let written_bytes = write_int(self.unsigned_abs(), std::slice::from_raw_parts_mut(buf_ptr.add(is_int_neg), max_size));
+                        let is_int_neg = usize::from(*self < 0);
+                        let written_bytes = write_int(self.unsigned_abs(), core::slice::from_raw_parts_mut(buf_ptr.add(is_int_neg), MAX_SIZE));
                         buf.as_mut_vec().set_len(buf_len + written_bytes + is_int_neg);
                     }
                 }

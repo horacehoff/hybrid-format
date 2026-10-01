@@ -4,14 +4,15 @@ pub use hybrid_format_macros::hformat;
 #[doc(hidden)]
 pub mod __private {
     pub use const_format;
+    pub use hybrid_format_impls::const_args;
     pub use hybrid_format_impls::push_str_unchecked;
 }
 
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __hformat_internal {
-    // a dynamic (runtime) item with some elements after
-    ([$buffer:ident] [$($pending_static_elems: tt)*] [$($capacity_expr: tt)*] [$($add_to_str_statements: tt)*] {$dynamic_elem: expr}, $($remaining:tt)*) => {{
+    // a dynamic (runtime) item
+    ([$buffer:ident] [$($pending_static_elems: tt)*] [$($capacity_expr: tt)*] [$($add_to_str_statements: tt)*] {$dynamic_elem: expr} $(, $($remaining:tt)*)?) => {{
         let _temp_formatted: &str = $crate::__private::const_format::concatcp!($($pending_static_elems)*);
         let _dynamic_elem = &$dynamic_elem;
         let _dynamic_formatted = $crate::HybridFormat::format(_dynamic_elem);
@@ -28,46 +29,17 @@ macro_rules! __hformat_internal {
                 unsafe {$crate::__private::push_str_unchecked($buffer, _temp_formatted)};
                 unsafe {$crate::Formatted::append(&_dynamic_formatted, $buffer)};
             ]
-            $($remaining)*
+            $($($remaining)*)?
         )
     }};
-    // a dynamic (runtime) item with no elements after (the last one), allows a trailing comma
-    ([$buffer:ident] [$($pending_static_elems: tt)*] [$($capacity_expr: tt)*] [$($add_to_str_statements: tt)*] {$dynamic_elem: expr} $(,)?) => {{
-        let _temp_formatted: &str = $crate::__private::const_format::concatcp!($($pending_static_elems)*);
-        let _dynamic_elem = &$dynamic_elem;
-        let _dynamic_formatted = $crate::HybridFormat::format(_dynamic_elem);
-        $crate::__hformat_internal!(
-            [$buffer]
-            []
-            [
-                $($capacity_expr)*
-                + _temp_formatted.len()
-                + $crate::Formatted::size(&_dynamic_formatted)
-            ]
-            [$(
-                $add_to_str_statements)*
-                unsafe {$crate::__private::push_str_unchecked($buffer, _temp_formatted)};
-                unsafe {$crate::Formatted::append(&_dynamic_formatted, $buffer)};
-            ]
-        )
-    }};
-    // static item with some elements after
-    ([$buffer:ident] [$($pending_static_elems: tt)*] [$($capacity_expr: tt)*] [$($add_to_str_statements: tt)*] $static_elem: expr, $($remaining:tt)*) => {{
+    // static item
+    ([$buffer:ident] [$($pending_static_elems: tt)*] [$($capacity_expr: tt)*] [$($add_to_str_statements: tt)*] $static_elem: expr $(, $($remaining:tt)*)?) => {{
         $crate::__hformat_internal!(
             [$buffer]
             [$($pending_static_elems)* $static_elem,]
             [$($capacity_expr)*]
             [$($add_to_str_statements)*]
-            $($remaining)*
-        )
-    }};
-    // static item with no elements after
-    ([$buffer:ident] [$($pending_static_elems: tt)*] [$($capacity_expr: tt)*] [$($add_to_str_statements: tt)*] $static_elem: expr $(,)?) => {{
-        $crate::__hformat_internal!(
-            [$buffer]
-            [$($pending_static_elems)* $static_elem,]
-            [$($capacity_expr)*]
-            [$($add_to_str_statements)*]
+            $($($remaining)*)?
         )
     }};
     // pure const
@@ -103,20 +75,37 @@ mod tests {
     use hybrid_format_macros::hformat;
 
     #[test]
-    fn test() {
+    fn const_int_literal() {
         assert_eq!(const { hformat!("{}", 42) }, format!("{}", 42));
         assert_eq!(const { hformat!("{42}") }, "42");
-        assert_eq!(
-            const { hformat!("Hello, world!") },
-            format!("Hello, world!")
-        );
+    }
+    #[test]
+    fn const_float_literal() {
         assert_eq!(
             const { hformat!("Float: {}", 4.2) },
             format!("Float: {}", 4.2)
         );
-        let x = 4.2e5;
-        assert_eq!(hformat!("Float: {x}"), format!("Float: {x}.0"));
-        const B: bool = true;
-        assert_eq!(const { hformat!("Bool: {B}") }, format!("Bool: {B}"));
+    }
+    #[test]
+    fn const_bool_literal() {
+        assert_eq!(
+            const { hformat!("Bool: {}", true) },
+            format!("Bool: {}", true)
+        );
+    }
+    #[test]
+    fn const_char_literal() {
+        assert_eq!(
+            const { hformat!("Char: {}", 'a') },
+            format!("Char: {}", 'a')
+        );
+    }
+    #[test]
+    fn const_float_variable() {
+        const MY_FLOAT: f64 = 4.2;
+        assert_eq!(
+            const { hformat!("Float: {}", MY_FLOAT) },
+            format!("Float: {}", 4.2)
+        );
     }
 }

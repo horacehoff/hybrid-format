@@ -22,65 +22,40 @@ struct HFormatInput {
     args: syn::punctuated::Punctuated<syn::Expr, syn::Token![,]>,
 }
 
-fn format_literal(expr: &Expr) -> Option<LitStr> {
-    if let Expr::Lit(expr_literal) = expr {
-        match &expr_literal.lit {
-            Lit::Str(string) => Some(LitStr::new(&string.value(), Span::call_site())),
-            Lit::Char(c) => {
-                let mut buf = [0; 4];
-                Some(LitStr::new(
-                    c.value().encode_utf8(&mut buf),
-                    Span::call_site(),
-                ))
-            }
-            Lit::Bool(b) => Some(LitStr::new(
-                if b.value() { "true" } else { "false" },
-                Span::call_site(),
-            )),
-            Lit::Float(float) => match float.suffix() {
-                "f64" | "" => Some(LitStr::new(
-                    zmij::Buffer::new().format(float.base10_parse::<f64>().ok()?),
-                    Span::call_site(),
-                )),
-                "f32" => Some(LitStr::new(
-                    zmij::Buffer::new().format(float.base10_parse::<f32>().ok()?),
-                    Span::call_site(),
-                )),
-                _ => None,
-            },
-            _ => None,
-        }
-    } else {
-        None
-    }
-}
-
 fn is_probably_const(expr: &Expr) -> bool {
-    if let Expr::Path(path) = expr
-        && let Some(name) = path.path.segments.last()
-    {
-        name.ident
-            .to_string()
-            .chars()
-            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
-    } else {
-        false
+    match expr {
+        Expr::Const(_) => true, // obviously
+        Expr::Path(path) => path.path.segments.last().map_or(
+            false,
+            |name| {
+                name.ident
+                    .to_string()
+                    .chars()
+                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+            }, // SCREAMING_SNAKE_CASE (Rust convention for consts)
+        ),
+        _ => false,
     }
 }
 
-fn format_expr(expr: &Expr) -> proc_macro2::TokenStream {
-    if let Some(literal) = format_literal(expr) {
-        quote!(#literal)
-    } else {
-        match expr {
-            Expr::Lit(lit) => match &lit.lit {
-                Lit::Int(int) if int.suffix().is_empty() => quote! ((#expr as i32)),
-                _ => quote! { #expr },
-            },
-            Expr::Const(_) => quote! { #expr },
-            Expr::Path(_) if is_probably_const(expr) => quote!(#expr),
-            _ => quote! { { #expr } },
-        }
+fn const_arg(
+    hformat: &proc_macro2::TokenStream,
+    expr: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    quote!(const {#hformat::__private::const_args::HybridFormatConstArg(#expr).format_const()}.as_const_arg())
+}
+
+fn format_expr(hformat: &proc_macro2::TokenStream, expr: &Expr) -> proc_macro2::TokenStream {
+    match expr {
+        Expr::Lit(lit) => match &lit.lit {
+            Lit::Int(int) if int.suffix().is_empty() => const_arg(hformat, &quote!(#expr as i32)),
+            Lit::Float(float) if float.suffix().is_empty() => {
+                const_arg(hformat, &quote!(#expr as f64))
+            }
+            _ => const_arg(hformat, &quote!(#expr)),
+        },
+        _ if is_probably_const(expr) => const_arg(hformat, &quote!(#expr)),
+        _ => quote! { { #expr } },
     }
 }
 
@@ -95,14 +70,17 @@ impl syn::parse::Parse for HFormatInput {
             syn::punctuated::Punctuated::new()
         };
 
-        Ok(HFormatInput { format_str, args })
+        Ok(Self { format_str, args })
     }
 }
 
 #[proc_macro]
+/// # Panics
+/// It will panic if the number of arguments given doesn't match the number of positional parameters
 pub fn hformat(input: TokenStream) -> TokenStream {
     let HFormatInput { format_str, args } = parse_macro_input!(input as HFormatInput);
     let input_format_str = format_str.value();
+    let hformat = import_hformat();
 
     let mut format_tokens = Vec::new();
     let mut temp_str = String::new();
@@ -125,7 +103,7 @@ pub fn hformat(input: TokenStream) -> TokenStream {
                     input_chars.next();
                     let arg = &args[arg_idx];
                     arg_idx += 1;
-                    format_tokens.push(format_expr(arg));
+                    format_tokens.push(format_expr(&hformat, arg));
                     continue;
                 }
                 let mut expr = String::new();
@@ -150,7 +128,7 @@ pub fn hformat(input: TokenStream) -> TokenStream {
                     Ok(expr) => expr,
                     Err(e) => return e.into_compile_error().into(),
                 };
-                format_tokens.push(format_expr(&expr));
+                format_tokens.push(format_expr(&hformat, &expr));
             }
             _ => temp_str.push(c),
         }
@@ -158,13 +136,10 @@ pub fn hformat(input: TokenStream) -> TokenStream {
     if !temp_str.is_empty() {
         format_tokens.push(quote! {
             #temp_str
-        })
+        });
     }
-    if arg_idx != args.len() {
-        panic!("Invalid number of arguments")
-    }
+    assert!(arg_idx == args.len(), "Invalid number of arguments");
 
-    let hformat = import_hformat();
     quote::quote! {
         {
             #hformat::__hformat_internal!(#(#format_tokens),*)

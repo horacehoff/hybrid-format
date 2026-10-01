@@ -46,7 +46,6 @@ The built-in implementations try to be as fast as possible.
 - To type the character `{`, type `{{` (like the `format!()` macro)
 - To type the character `}`, type `}` (unlike the `format!()` macro)
 - There are no format modifiers yet (such as `{:?}`, `{:.2}`, ...)
-- `f32`/`f64` consts need to be annotated with `as f32`/`as f64`
 - Floats with zero decimal places are formatted with a trailing zero
 
 The goal is to eventually fully support [https://doc.rust-lang.org/std/fmt/index.html](https://doc.rust-lang.org/std/fmt/index.html):
@@ -69,29 +68,44 @@ parameter := argument '$'
 
 ## Usage
 ```rust
-assert_eq!(const { hformat!("{}", 42) }, format!("{}", 42));
-
-assert_eq!(const { hformat!("{42}") }, "42");
-
-assert_eq!(
-    const { hformat!("Hello, world!") },
-    format!("Hello, world!")
-);
-
-assert_eq!(
-    const { hformat!("Float: {}", 4.2) },
-    format!("Float: {}", 4.2)
-);
-
-let x = 4.2e5;
-assert_eq!(hformat!("Float: {x}"), format!("Float: {x}.0"));
-
-const B: bool = true;
-assert_eq!(const { hformat!("Bool: {B}") }, format!("Bool: {B}"));
+#[test]
+fn const_int_literal() {
+    assert_eq!(const { hformat!("{}", 42) }, format!("{}", 42));
+    assert_eq!(const { hformat!("{42}") }, "42");
+}
+#[test]
+fn const_float_literal() {
+    assert_eq!(
+        const { hformat!("Float: {}", 4.2) },
+        format!("Float: {}", 4.2)
+    );
+}
+#[test]
+fn const_bool_literal() {
+    assert_eq!(
+        const { hformat!("Bool: {}", true) },
+        format!("Bool: {}", true)
+    );
+}
+#[test]
+fn const_char_literal() {
+    assert_eq!(
+        const { hformat!("Char: {}", 'a') },
+        format!("Char: {}", 'a')
+    );
+}
+#[test]
+fn const_float_variable() {
+    const MY_FLOAT: f64 = 4.2;
+    assert_eq!(
+        const { hformat!("Float: {}", MY_FLOAT) },
+        format!("Float: {}", 4.2)
+    );
+}
 ```
 
 ## Benchmarks
-| Benchmark    | `std::format!` | `hformat!` | Speedup compared from `std::format!` |
+| Benchmark    | `std::format!` | `hformat!` | Speedup compared to `std::format!` |
 | -------- | ------- | ------- | ------- |
 | constant  | 13400ps | 311.2ps (just a &'static str) | 43x |
 | all_dynamic | 117ns | 36ns | 3.25x |

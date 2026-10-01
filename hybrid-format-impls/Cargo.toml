@@ -2,7 +2,12 @@
 name = "hybrid-format-impls"
 version = "0.1.0"
 edition = "2024"
+rust-version.workspace = true
 
 [dependencies]
+const-zmij = "0.1.0"
 lexical-core = {version="1.0.6", default-features=false, features=["write-integers"]}
 zmij = "1.0.23"
+
+[lints]
+workspace = true
