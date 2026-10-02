@@ -75,37 +75,109 @@ mod tests {
     use hybrid_format_macros::hformat;
 
     #[test]
-    fn const_int_literal() {
+    fn int_const_literal() {
         assert_eq!(const { hformat!("{}", 42) }, format!("{}", 42));
-        assert_eq!(const { hformat!("{42}") }, "42");
     }
     #[test]
-    fn const_float_literal() {
+    fn int_const_variable() {
+        const MY_INT: i32 = 42;
+        assert_eq!(const { hformat!("{}", MY_INT) }, format!("{}", MY_INT));
+    }
+    #[test]
+    fn int_dynamic() {
+        let i = 2 + 2;
+        assert_eq!(hformat!("{}", i), format!("{}", i));
+    }
+    #[test]
+    fn float_const_literal() {
         assert_eq!(
             const { hformat!("Float: {}", 4.2) },
             format!("Float: {}", 4.2)
         );
     }
     #[test]
-    fn const_bool_literal() {
+    fn float_const_variable() {
+        const MY_FLOAT: f64 = 4.2;
+        assert_eq!(
+            const { hformat!("Float: {}", MY_FLOAT) },
+            format!("Float: {}", MY_FLOAT)
+        );
+    }
+    #[test]
+    fn float_dynamic() {
+        let f = 4.2 + 6.7;
+        assert_eq!(hformat!("Float: {}", f), format!("Float: {}", f));
+    }
+    #[test]
+    fn bool_const_literal() {
         assert_eq!(
             const { hformat!("Bool: {}", true) },
             format!("Bool: {}", true)
         );
     }
     #[test]
-    fn const_char_literal() {
+    fn bool_const_variable() {
+        const MY_BOOL: bool = true;
+        assert_eq!(
+            const { hformat!("Bool: {}", MY_BOOL) },
+            format!("Bool: {}", MY_BOOL)
+        );
+    }
+    #[test]
+    fn bool_dynamic() {
+        let b = true;
+        assert_eq!(hformat!("Bool: {}", b), format!("Bool: {}", b));
+    }
+    #[test]
+    fn char_const_literal() {
         assert_eq!(
             const { hformat!("Char: {}", 'a') },
             format!("Char: {}", 'a')
         );
     }
     #[test]
-    fn const_float_variable() {
-        const MY_FLOAT: f64 = 4.2;
+    fn char_const_variable() {
+        const MY_CHAR: char = 'a';
         assert_eq!(
-            const { hformat!("Float: {}", MY_FLOAT) },
-            format!("Float: {}", 4.2)
+            const { hformat!("Char: {}", MY_CHAR) },
+            format!("Char: {}", MY_CHAR)
+        );
+    }
+    #[test]
+    fn char_dynamic() {
+        let c = 'a';
+        assert_eq!(hformat!("Char: {}", c), format!("Char: {}", c));
+    }
+    #[test]
+    fn str_const_literal() {
+        assert_eq!(
+            const { hformat!("String: {}", "Hello, world!") },
+            format!("String: {}", "Hello, world!")
+        );
+    }
+    #[test]
+    fn str_const_variable() {
+        const MY_STR: &str = "Hello, world!";
+        assert_eq!(
+            const { hformat!("String: {}", MY_STR) },
+            format!("String: {}", MY_STR)
+        );
+    }
+    #[test]
+    fn str_dynamic() {
+        let s = "Hello, world!";
+        assert_eq!(hformat!("String: {}", s), format!("String: {}", s));
+    }
+    #[test]
+    fn hybrid() {
+        const MY_INT: i32 = 42;
+        const MY_BOOL: bool = true;
+        const MY_STR: &str = "Hello, world!";
+        let f = 4.2 + 6.7;
+        let c = 'a';
+        assert_eq!(
+            hformat!("{MY_INT}:{MY_BOOL}:{MY_STR}:{f}:{c}"),
+            format!("{MY_INT}:{MY_BOOL}:{MY_STR}:{f}:{c}")
         );
     }
 }

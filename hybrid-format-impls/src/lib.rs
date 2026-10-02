@@ -132,16 +132,15 @@ pub mod __private {
         }
         #[inline]
         unsafe fn append(&self, buf: &mut String) {
-            let mut temp_char_buf = [0u8; 4];
-            let char_len = self.encode_utf8(&mut temp_char_buf).len();
             let buf_len = buf.len();
             debug_assert!(4 <= buf.capacity() - buf_len);
             unsafe {
-                core::ptr::copy_nonoverlapping(
-                    temp_char_buf.as_ptr(),
-                    buf.as_mut_ptr().add(buf_len),
-                    4,
-                );
+                let char_len = self
+                    .encode_utf8(core::slice::from_raw_parts_mut(
+                        buf.as_mut_ptr().add(buf_len),
+                        4,
+                    ))
+                    .len();
                 buf.as_mut_vec().set_len(buf_len + char_len);
             }
         }
