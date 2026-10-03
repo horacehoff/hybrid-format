@@ -7,7 +7,18 @@ members = [
 resolver = "3"
 
 [workspace.package]
+version = "0.1.0"
+edition = "2024"
 rust-version = "1.87.0"
+license = "Apache-2.0"
+repository = "https://github.com/horacehoff/hybrid-format"
+readme = "README.md"
+categories = ["no-std","value-formatting"]
+keywords = ["format", "formating", "const", "no-std", "string"]
+
+[workspace.dependencies]
+hybrid-format-impls = { path = "hybrid-format-impls", version = "=0.1.0" }
+hybrid-format-macros = { path = "hybrid-format-macros", version = "=0.1.0" }
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }

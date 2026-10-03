@@ -1,14 +1,105 @@
 # Hybrid-Format
-A very experimental Rust library that provides an `hformat` macro that's faster than Rust's `format` macro, but is more limited too.
-The whole idea of `hformat` is to do as much of the work at compilation time as possible. It's called "hybrid" because it supports both constants and dynamic values.
+> Rust 1.87+ | `no_std`, runtime formatting needs an allocator
 
-Literals and const blocks are automatically inlined. Variables with `SCREAMING_SNAKE_CASE` names are treated as constants and are automatically inlined (NOTE: if they are not constants, the macro will produce an error).
-Anything else needs to be wrapped in a `const {...}` block to be treated as a constant.
+`hformat` macro that formats a string like [`format!`](https://doc.rust-lang.org/std/macro.format.html), but faster and better.
+
+Constant arguments (literals, `const` blocks, `SCREAMING_SNAKE_CASE` names) are formatted at compile time. If every argument is a constant, the macro outputs a `&'static str`, otherwise it outputs a `String` built with a single allocation.
+
 You can essentially type any expression inside `{}`, it doesn't require an inner block.
 
-If the macro only contains constants, it returns a constant `&str`, otherwise it returns a `String`.
+## Compile-time formatting
+The following types can be inlined if passed as literals / constants:
+- `&str`
+- `bool`
+- `char`
+- `f32`/`f64`
+- `i8`,`i16`,`i32`,`i64`,`i128`,`isize`,`u8`,`u16`,`u32`,`u64`,`u128`,`usize`
 
-Two traits are used:
+To format your own types at compile-time, you need to pass a `ConstFormattedString` literal/constant or a function that returns a `ConstFormattedString`.
+```rust
+impl<const N: usize> ConstFormattedString<N> {
+    pub const fn new() -> Self;
+    pub const fn len(&self) -> usize;
+    pub const fn is_empty(&self);
+    pub const fn as_str(&self) -> &str;
+    pub const fn push_str(mut self, string: &str) -> Self;
+    pub const fn push_char(self, c: char) -> Self;
+    pub const fn push_bool(self, b: bool) -> Self;
+    pub const fn push_f64(self, f: f64) -> Self;
+    pub const fn push_f32(self, f: f32) -> Self;
+    pub const fn push_u8(self, n: u8) -> Self;
+    pub const fn push_u16(self, n: u16) -> Self;
+    pub const fn push_u32(self, n: u32) -> Self;
+    pub const fn push_u64(self, n: u64) -> Self;
+    pub const fn push_u128(self, n: u128) -> Self;
+    pub const fn push_usize(self, n: usize) -> Self;
+    pub const fn push_i8(self, n: i8) -> Self;
+    pub const fn push_i16(self, n: i16) -> Self;
+    pub const fn push_i32(self, n: i32) -> Self;
+    pub const fn push_i64(self, n: i64) -> Self;
+    pub const fn push_i128(self, n: i128) -> Self;
+    pub const fn push_isize(self, n: isize) -> Self;
+}
+```
+
+### Example
+```rust
+use hybrid_format::{hformat, ConstFormattedString};
+struct Person {
+    first_name: &'static str,
+    last_name: &'static str,
+    age: u8,
+    balance: f64,
+}
+impl Person {
+    const fn format(&self) -> ConstFormattedString<64> {
+        ConstFormattedString::new()
+            .push_str(self.last_name)
+            .push_str(", ")
+            .push_str(self.first_name)
+            .push_str(" | Age: ")
+            .push_u8(self.age)
+            .push_str(" | $")
+            .push_f64(self.balance)
+    }
+}
+fn main() {
+    const RANDOM_GUY: Person = Person {
+        first_name: "John",
+        last_name: "Doe",
+        age: 40,
+        balance: 32.0,
+    };
+    // You can format it once, at compile time, then use it by name like any other constant
+    const RANDOM_GUY_STR: ConstFormattedString<64> = RANDOM_GUY.format();
+    const GREETING: &str = hformat!("Hello, {RANDOM_GUY_STR}!");
+    
+    // You can also compute it at compile-time with a const block
+    const SAME_GREETING: &str = hformat!("Hello, {}!", const { RANDOM_GUY.format() });
+    
+    assert_eq!(GREETING, "Hello, Doe, John | Age: 40 | $32.0!");
+    assert_eq!(GREETING, SAME_GREETING);
+    
+    // And you can also mix it with runtime values
+    let id = std::hint::black_box(0);
+    assert_eq!(
+        hformat!("#{id} - {RANDOM_GUY_STR}"),
+        "#0 - Doe, John | Age: 40 | $32.0"
+    );
+}
+```
+
+## Runtime formatting
+Built-in implementations are:
+- `str`/`&str`/`String`
+- `bool`
+- `char`
+- `f32`/`f64`
+- `i8`,`i16`,`i32`,`i64`,`i128`,`isize`,`u8`,`u16`,`u32`,`u64`,`u128`,`usize`
+
+The built-in implementations try to be as fast as possible.
+
+To extend the implementations, and format your own types at runtime, use those two traits:
 ```rust
 /// A not-yet-formatted value, that knows its formatted size, and can format(write) itself into a buffer without any reallocations.
 /// # Safety
@@ -32,15 +123,6 @@ pub trait HybridFormat {
     fn format(&self) -> Self::Formatted<'_>;
 }
 ```
-They can be extended, and you can choose the fastest/most efficient intermediate representation for your type.
-Built-in implementations are:
-- `str`/`&str`/`String`
-- `bool`
-- `char`
-- `f32`/`f64`
-- `i8`,`i16`,`i32`,`i64`,`128`,`isize`,`u8`,`u16`,`u32`,`u64`,`u128`,`usize`
-
-The built-in implementations try to be as fast as possible.
 
 ## Limitations / Quirks
 - To type the character `{`, type `{{` (like the `format!()` macro)
@@ -102,12 +184,24 @@ fn const_float_variable() {
         format!("Float: {}", 4.2)
     );
 }
+#[test]
+fn hybrid() {
+    const MY_INT: i32 = 42;
+    const MY_BOOL: bool = true;
+    const MY_STR: &str = "Hello, world!";
+    let f = 4.2 + 6.7;
+    let c = 'a';
+    assert_eq!(
+        hformat!("{MY_INT}:{MY_BOOL}:{MY_STR}:{f}:{c}"),
+        format!("{MY_INT}:{MY_BOOL}:{MY_STR}:{f}:{c}")
+    );
+}
 ```
 
 ## Benchmarks
 | Benchmark    | `std::format!` | `hformat!` | Speedup compared to `std::format!` |
 | -------- | ------- | ------- | ------- |
-| constant  | 13400ps | 311.2ps (just a &'static str) | 43x |
+| constant  | 13.4ns | 311.2ps (just a &'static str) | 43x |
 | all_dynamic | 117ns | 36ns | 3.25x |
 | ten_const_ten_dynamic | 446.8ns | 63.8ns | 7x |
 

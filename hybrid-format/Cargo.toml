@@ -1,12 +1,18 @@
 [package]
 name = "hybrid-format"
-version = "0.1.0"
-edition = "2024"
+description = "A `format!` alternative that formats constants at compile-time and everything else much faster at runtime with a single allocation. Extensible with your own types and no_std."
+version.workspace = true
+edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
-hybrid-format-macros = {path = "../hybrid-format-macros"}
-hybrid-format-impls = {path = "../hybrid-format-impls"}
+hybrid-format-macros.workspace = true
+hybrid-format-impls.workspace = true
 const_format = "0.2.36"
 
 [dev-dependencies]

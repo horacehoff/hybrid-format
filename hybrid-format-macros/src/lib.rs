@@ -1,3 +1,5 @@
+//! Use the `hybrid-format` crate instead.
+
 use proc_macro::TokenStream;
 use proc_macro_crate::{FoundCrate, crate_name};
 use proc_macro2::Span;
@@ -9,7 +11,7 @@ fn import_hformat() -> proc_macro2::TokenStream {
         crate_name("hybrid-format").expect("hybrid-format is present in `Cargo.toml`");
 
     match found_crate {
-        FoundCrate::Itself => quote!(crate),
+        FoundCrate::Itself => quote!(::hybrid_format),
         FoundCrate::Name(name) => {
             let ident = Ident::new(&name, Span::call_site());
             quote!(::#ident)
@@ -45,17 +47,27 @@ fn const_arg(
     quote!(const {#hformat::__private::const_args::HybridFormatConstArg(#expr).format_const()}.as_const_arg())
 }
 
-fn format_expr(hformat: &proc_macro2::TokenStream, expr: &Expr) -> proc_macro2::TokenStream {
+fn parse_literal(expr: &Expr) -> Option<&Lit> {
     match expr {
-        Expr::Lit(lit) => match &lit.lit {
-            Lit::Int(int) if int.suffix().is_empty() => const_arg(hformat, &quote!(#expr as i32)),
-            Lit::Float(float) if float.suffix().is_empty() => {
-                const_arg(hformat, &quote!(#expr as f64))
-            }
-            _ => const_arg(hformat, &quote!(#expr)),
-        },
-        _ if is_probably_const(expr) => const_arg(hformat, &quote!(#expr)),
-        _ => quote! { { #expr } },
+        Expr::Lit(lit) => Some(&lit.lit),
+        Expr::Unary(unary_op) if matches!(unary_op.op, syn::UnOp::Neg(_) | syn::UnOp::Not(_)) => {
+            parse_literal(&unary_op.expr)
+        }
+        _ => None,
+    }
+}
+
+fn format_expr(hformat: &proc_macro2::TokenStream, expr: &Expr) -> proc_macro2::TokenStream {
+    match parse_literal(expr) {
+        Some(Lit::Int(int)) if int.suffix().is_empty() => {
+            const_arg(hformat, &quote!((#expr) as i32))
+        }
+        Some(Lit::Float(float)) if float.suffix().is_empty() => {
+            const_arg(hformat, &quote!((#expr) as f64))
+        }
+        Some(_) => const_arg(hformat, &quote!(#expr)),
+        None if is_probably_const(expr) => const_arg(hformat, &quote!(#expr)),
+        None => quote! { { #expr } },
     }
 }
 

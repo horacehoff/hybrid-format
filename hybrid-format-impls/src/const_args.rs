@@ -2,49 +2,167 @@
 ///
 /// It's a struct because const traits aren't stable yet.
 /// Two functions are used instead of a single one because a const function can't return a 'static reference.
+#[doc(hidden)]
 pub struct HybridFormatConstArg<T>(pub T);
 
-/// A compile-time formatted float.
-pub struct FormattedFloat {
-    bytes: [u8; 24],
-    size: usize,
+pub struct ConstFormattedString<const N: usize> {
+    buf: [u8; N],
+    len: usize,
 }
-
-impl FormattedFloat {
-    #[must_use]
-    #[inline]
-    pub const fn as_const_arg(&self) -> &str {
-        // SAFETY: `self.bytes[..self.size]` was copied directly from the string returned by const_zmij, so it's known to be valid UTF-8.
-        unsafe { str::from_utf8_unchecked(self.bytes.split_at(self.size).0) }
-    }
-}
-
-macro_rules! HybridFormatConstArgFloat {
-    ($($t: ty )*) => {$(
-        impl HybridFormatConstArg<$t> {
-            #[inline]
-            pub const fn format_const(self) -> FormattedFloat {
-                let mut buffer = const_zmij::Buffer::new();
-                let s = const_zmij::Format(&mut buffer, self.0).call_once();
-                let s_len = s.len();
-                let mut bytes = [0u8; 24];
-                bytes.split_at_mut(s_len).0.copy_from_slice(s.as_bytes());
-                FormattedFloat {
-                    bytes,
-                    size: s_len,
-                }
-            }
-        }
-    )*};
-}
-
-HybridFormatConstArgFloat!(f32 f64);
 
 impl<T: Copy> HybridFormatConstArg<T> {
     #[must_use]
     #[inline(always)]
-    pub const fn as_const_arg(&self) -> T {
+    pub const fn as_const_arg(self) -> T {
         self.0
+    }
+}
+
+impl<const N: usize> Default for ConstFormattedString<N> {
+    #[inline(always)]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+macro_rules! push_int_impl {
+    ($($name: ident($t: ty) => $base: ident),* $(,)?) => {$(
+        #[must_use]
+        #[inline]
+        pub const fn $name(self, n: $t) -> Self {
+            self.$base(n as _)
+        }
+    )*};
+}
+
+impl<const N: usize> ConstFormattedString<N> {
+    #[must_use]
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
+            buf: [0; N],
+            len: 0,
+        }
+    }
+    #[must_use]
+    #[inline]
+    pub const fn len(&self) -> usize {
+        self.len
+    }
+    #[must_use]
+    #[inline]
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+    #[must_use]
+    #[inline]
+    /// Returns the string built so far.
+    pub const fn as_str(&self) -> &str {
+        // SAFETY: This is always valid UTF-8, because `buf[..len]` is only ever written by `push_str` and `write_u128`.
+        unsafe { str::from_utf8_unchecked(self.buf.split_at(self.len).0) }
+    }
+    #[doc(hidden)]
+    #[must_use]
+    #[inline]
+    pub const fn as_const_arg(&'static self) -> &'static str {
+        self.as_str()
+    }
+    #[must_use]
+    #[inline]
+    /// # Panics
+    /// This will panic if `self.len() + string.len() > N`.
+    pub const fn push_str(mut self, string: &str) -> Self {
+        let bytes = string.as_bytes();
+        let bytes_len = bytes.len();
+        assert!(
+            bytes_len <= N - self.len,
+            "Capacity exceeded when pushing &str"
+        );
+        self.buf
+            .split_at_mut(self.len)
+            .1
+            .split_at_mut(bytes_len)
+            .0
+            .copy_from_slice(bytes);
+        self.len += bytes_len;
+        self
+    }
+    #[must_use]
+    #[inline]
+    pub const fn push_char(self, c: char) -> Self {
+        self.push_str(c.encode_utf8(&mut [0u8; 4]))
+    }
+    #[must_use]
+    #[inline]
+    pub const fn push_bool(self, b: bool) -> Self {
+        self.push_str(if b { "true" } else { "false" })
+    }
+    #[must_use]
+    #[inline]
+    pub const fn push_f64(self, f: f64) -> Self {
+        let mut buffer = const_zmij::Buffer::new();
+        self.push_str(const_zmij::Format(&mut buffer, f).call_once())
+    }
+    #[must_use]
+    #[inline]
+    pub const fn push_f32(self, f: f32) -> Self {
+        let mut buffer = const_zmij::Buffer::new();
+        self.push_str(const_zmij::Format(&mut buffer, f).call_once())
+    }
+    #[inline]
+    const fn write_u128(&mut self, n: u128) {
+        if n >= 10 {
+            self.write_u128(n / 10);
+        }
+        assert!(self.len < N, "Capacity exceeded when pushing int");
+        self.buf[self.len] = b'0' + (n % 10) as u8;
+        self.len += 1;
+    }
+    #[must_use]
+    #[inline]
+    pub const fn push_u128(mut self, n: u128) -> Self {
+        self.write_u128(n);
+        self
+    }
+    #[must_use]
+    #[inline]
+    pub const fn push_i128(self, n: i128) -> Self {
+        if n < 0 { self.push_char('-') } else { self }.push_u128(n.unsigned_abs())
+    }
+    push_int_impl! {
+        push_u8(u8) => push_u128,
+        push_u16(u16) => push_u128,
+        push_u32(u32) => push_u128,
+        push_u64(u64) => push_u128,
+        push_usize(usize) => push_u128,
+        push_i8(i8) => push_i128,
+        push_i16(i16) => push_i128,
+        push_i32(i32) => push_i128,
+        push_i64(i64) => push_i128,
+        push_isize(isize) => push_i128,
+    }
+}
+
+impl<const N: usize> HybridFormatConstArg<ConstFormattedString<N>> {
+    #[must_use]
+    #[inline]
+    pub const fn format_const(self) -> ConstFormattedString<N> {
+        self.0
+    }
+}
+
+impl HybridFormatConstArg<f32> {
+    #[must_use]
+    #[inline]
+    pub const fn format_const(self) -> ConstFormattedString<24> {
+        ConstFormattedString::new().push_f32(self.0)
+    }
+}
+impl HybridFormatConstArg<f64> {
+    #[must_use]
+    #[inline]
+    pub const fn format_const(self) -> ConstFormattedString<24> {
+        ConstFormattedString::new().push_f64(self.0)
     }
 }
 

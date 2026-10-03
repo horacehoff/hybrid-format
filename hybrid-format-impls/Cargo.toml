@@ -1,8 +1,13 @@
 [package]
 name = "hybrid-format-impls"
-version = "0.1.0"
-edition = "2024"
+description = "Use the hybrid-format crate instead."
+version.workspace = true
+edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 const-zmij = "0.1.0"
