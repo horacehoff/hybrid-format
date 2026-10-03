@@ -233,12 +233,12 @@ mod tests {
     #[test]
     fn int_const_variable() {
         const MY_INT: i32 = 42;
-        assert_eq!(const { hformat!("{}", MY_INT) }, format!("{}", MY_INT));
+        assert_eq!(const { hformat!("{}", MY_INT) }, format!("{MY_INT}"));
     }
     #[test]
     fn int_dynamic() {
         let i = 2 + 2;
-        assert_eq!(hformat!("{}", i), format!("{}", i));
+        assert_eq!(hformat!("{}", i), format!("{i}"));
     }
     #[test]
     fn float_const_literal() {
@@ -252,13 +252,13 @@ mod tests {
         const MY_FLOAT: f64 = 4.2;
         assert_eq!(
             const { hformat!("Float: {}", MY_FLOAT) },
-            format!("Float: {}", MY_FLOAT)
+            format!("Float: {MY_FLOAT}")
         );
     }
     #[test]
     fn float_dynamic() {
         let f = 4.2 + 6.7;
-        assert_eq!(hformat!("Float: {}", f), format!("Float: {}", f));
+        assert_eq!(hformat!("Float: {}", f), format!("Float: {f}"));
     }
     #[test]
     fn bool_const_literal() {
@@ -272,13 +272,13 @@ mod tests {
         const MY_BOOL: bool = true;
         assert_eq!(
             const { hformat!("Bool: {}", MY_BOOL) },
-            format!("Bool: {}", MY_BOOL)
+            format!("Bool: {MY_BOOL}")
         );
     }
     #[test]
     fn bool_dynamic() {
         let b = true;
-        assert_eq!(hformat!("Bool: {}", b), format!("Bool: {}", b));
+        assert_eq!(hformat!("Bool: {}", b), format!("Bool: {b}"));
     }
     #[test]
     fn char_const_literal() {
@@ -292,13 +292,13 @@ mod tests {
         const MY_CHAR: char = 'a';
         assert_eq!(
             const { hformat!("Char: {}", MY_CHAR) },
-            format!("Char: {}", MY_CHAR)
+            format!("Char: {MY_CHAR}")
         );
     }
     #[test]
     fn char_dynamic() {
         let c = 'a';
-        assert_eq!(hformat!("Char: {}", c), format!("Char: {}", c));
+        assert_eq!(hformat!("Char: {}", c), format!("Char: {c}"));
     }
     #[test]
     fn str_const_literal() {
@@ -312,13 +312,13 @@ mod tests {
         const MY_STR: &str = "Hello, world!";
         assert_eq!(
             const { hformat!("String: {}", MY_STR) },
-            format!("String: {}", MY_STR)
+            format!("String: {MY_STR}")
         );
     }
     #[test]
     fn str_dynamic() {
         let s = "Hello, world!";
-        assert_eq!(hformat!("String: {}", s), format!("String: {}", s));
+        assert_eq!(hformat!("String: {}", s), format!("String: {s}"));
     }
     #[test]
     fn hybrid() {
@@ -363,7 +363,7 @@ mod tests {
         const SAME_GREETING: &str = hformat!("Hello, {}!", const { RANDOM_GUY.format() });
         assert_eq!(GREETING, "Hello, Doe, John | Age: 40 | $32.0!");
         assert_eq!(GREETING, SAME_GREETING);
-        let id = std::hint::black_box(0);
+        let id = core::hint::black_box(0);
         assert_eq!(
             hformat!("#{id} - {RANDOM_GUY_STR}"),
             "#0 - Doe, John | Age: 40 | $32.0"

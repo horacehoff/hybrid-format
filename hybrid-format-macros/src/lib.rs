@@ -87,6 +87,7 @@ impl syn::parse::Parse for HFormatInput {
 }
 
 #[proc_macro]
+#[inline]
 /// # Panics
 /// It will panic if the number of arguments given doesn't match the number of positional parameters
 pub fn hformat(input: TokenStream) -> TokenStream {

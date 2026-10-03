@@ -32,6 +32,11 @@ redundant_clone = "warn"
 inline_always = "allow"
 missing_inline_in_public_items = "warn"
 std_instead_of_core = "warn"
+items_after_statements = "allow"
+useless_format = "allow"
+too_many_lines = "allow"
+many_single_char_names = "allow"
+significant_drop_tightening = "allow"
 
 [profile.bench]
 codegen-units=1

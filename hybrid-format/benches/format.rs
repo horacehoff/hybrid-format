@@ -1,5 +1,4 @@
-use std::hint::black_box;
-
+use core::hint::black_box;
 use criterion::{Criterion, criterion_group, criterion_main};
 use hybrid_format::hformat;
 
@@ -15,7 +14,7 @@ fn format_benchmarks(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("all_dynamic");
     let n = 42;
-    let f = 42.676767;
+    let f = 42.67_67_67;
     let name = "Horace";
     group.bench_function("std", |b| {
         b.iter(|| {
@@ -25,7 +24,7 @@ fn format_benchmarks(c: &mut Criterion) {
                 black_box(n),
                 black_box(f)
             )
-        })
+        });
     });
     group.bench_function("hybridformat", |b| {
         b.iter(|| {
@@ -35,13 +34,13 @@ fn format_benchmarks(c: &mut Criterion) {
                 black_box(n),
                 black_box(f)
             )
-        })
+        });
     });
     group.finish();
 
     let mut group = c.benchmark_group("ten_const_ten_dynamic");
     let a = 4.2e10;
-    let b1 = -67924034;
+    let b1 = -67_924_034;
     let c = true;
     let d = false;
     let e = -42 * 1000;
@@ -87,7 +86,7 @@ fn format_benchmarks(c: &mut Criterion) {
                 I,
                 J
             )
-        })
+        });
     });
     group.bench_function("hybridformat", |b| {
         b.iter(|| {
@@ -114,7 +113,7 @@ fn format_benchmarks(c: &mut Criterion) {
                 I,
                 J
             )
-        })
+        });
     });
     group.finish();
 }
