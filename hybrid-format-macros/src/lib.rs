@@ -6,6 +6,8 @@ use proc_macro2::Span;
 use quote::quote;
 use syn::{Expr, Ident, Lit, LitStr, parse_macro_input};
 
+mod parser;
+
 fn import_hformat() -> proc_macro2::TokenStream {
     let found_crate =
         crate_name("hybrid-format").expect("hybrid-format is present in `Cargo.toml`");

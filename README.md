@@ -1,5 +1,5 @@
 # Hybrid-Format
-> Rust 1.87+ | `no_std`, runtime formatting needs an allocator
+> Rust 1.87+, `no_std` (runtime formatting needs an allocator)
 
 `hformat` macro that formats a string like [`format!`](https://doc.rust-lang.org/std/macro.format.html), but faster and better.
 
