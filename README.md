@@ -1,26 +1,28 @@
 # Hybrid-Format
 > Rust 1.87+, `no_std` (runtime formatting needs an allocator)
 
-`hformat` macro that formats a string like [`format!`](https://doc.rust-lang.org/std/macro.format.html), but faster and better.
+`hformat!` macro that formats a string like [`format!`](https://doc.rust-lang.org/std/macro.format.html), but faster.
 
 Constant arguments (literals, `const` blocks, `SCREAMING_SNAKE_CASE` names) are formatted at compile time. If every argument is a constant, the macro outputs a `&'static str`, otherwise it outputs a `String` built with a single allocation.
 
+Format specs (fill, align, precision, ...) aren't supported yet.
+
 You can essentially type any expression inside `{}`, it doesn't require an inner block.
 
-## Compile-time formatting
-The following types can be inlined if passed as literals / constants:
+The following types can be formatted both at compile-time and runtime (the implementations are very optimized):
 - `&str`
 - `bool`
 - `char`
 - `f32`/`f64`
 - `i8`,`i16`,`i32`,`i64`,`i128`,`isize`,`u8`,`u16`,`u32`,`u64`,`u128`,`usize`
 
+## Compile-time formatting
 To format your own types at compile-time, you need to pass a `ConstFormattedString` literal/constant or a function that returns a `ConstFormattedString`.
 ```rust
 impl<const N: usize> ConstFormattedString<N> {
     pub const fn new() -> Self;
     pub const fn len(&self) -> usize;
-    pub const fn is_empty(&self);
+    pub const fn is_empty(&self) -> bool;
     pub const fn as_str(&self) -> &str;
     pub const fn push_str(mut self, string: &str) -> Self;
     pub const fn push_char(self, c: char) -> Self;
@@ -90,14 +92,7 @@ fn main() {
 ```
 
 ## Runtime formatting
-Built-in implementations are:
-- `str`/`&str`/`String`
-- `bool`
-- `char`
-- `f32`/`f64`
-- `i8`,`i16`,`i32`,`i64`,`i128`,`isize`,`u8`,`u16`,`u32`,`u64`,`u128`,`usize`
-
-The built-in implementations try to be as fast as possible.
+The built-in implementations aim to be as fast as possible.
 
 To extend the implementations, and format your own types at runtime, use those two traits:
 ```rust
@@ -126,8 +121,8 @@ pub trait HybridFormat {
 
 ## Limitations / Quirks
 - To type the character `{`, type `{{` (like the `format!()` macro)
-- To type the character `}`, type `}` (unlike the `format!()` macro)
-- There are no format modifiers yet (such as `{:?}`, `{:.2}`, ...)
+- To type the character `}`, type `}}` (like the `format!()` macro)
+- Format specs aren't supported yet (they can only be parsed right now)
 - Floats with zero decimal places are formatted with a trailing zero
 
 The goal is to eventually fully support [https://doc.rust-lang.org/std/fmt/index.html](https://doc.rust-lang.org/std/fmt/index.html):
@@ -150,6 +145,19 @@ parameter := argument '$'
 
 ## Usage
 ```rust
+use hybrid_format::hformat;
+#[test]
+fn hybrid() {
+    const MY_INT: i32 = 42;
+    const MY_BOOL: bool = true;
+    const MY_STR: &str = "Hello, world!";
+    let f = 4.2 + 6.7;
+    let c = 'a';
+    assert_eq!(
+        hformat!("{MY_INT}:{MY_BOOL}:{MY_STR}:{f}:{c}"),
+        format!("{MY_INT}:{MY_BOOL}:{MY_STR}:{f}:{c}")
+    );
+}
 #[test]
 fn const_int_literal() {
     assert_eq!(const { hformat!("{}", 42) }, format!("{}", 42));
@@ -182,18 +190,6 @@ fn const_float_variable() {
     assert_eq!(
         const { hformat!("Float: {}", MY_FLOAT) },
         format!("Float: {}", 4.2)
-    );
-}
-#[test]
-fn hybrid() {
-    const MY_INT: i32 = 42;
-    const MY_BOOL: bool = true;
-    const MY_STR: &str = "Hello, world!";
-    let f = 4.2 + 6.7;
-    let c = 'a';
-    assert_eq!(
-        hformat!("{MY_INT}:{MY_BOOL}:{MY_STR}:{f}:{c}"),
-        format!("{MY_INT}:{MY_BOOL}:{MY_STR}:{f}:{c}")
     );
 }
 ```

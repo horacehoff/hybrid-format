@@ -1,10 +1,12 @@
-//! [`hformat`] macro that formats a string like [`format!`](https://doc.rust-lang.org/std/macro.format.html), but faster and better.
+//! [`hformat!`] macro that formats a string like [`format!`](https://doc.rust-lang.org/std/macro.format.html), but faster.
 //! Supports `no_std`, though runtime formatting needs an allocator.
 //!
 //! Constant arguments (literals, `const` blocks, `SCREAMING_SNAKE_CASE` names) are formatted at compile time.
 //! If every argument is a constant, the macro outputs a `&'static str`, otherwise it outputs a `String` built with a single allocation.
 //!
-//! The following types can be formatted both at compile-time and runtime:
+//! Format specs (fill, align, precision, ...) aren't supported yet.
+//!
+//! The following types can be formatted both at compile-time and runtime (the implementations are very optimized):
 //! - `&str`
 //! - `bool`
 //! - `char`
@@ -110,11 +112,79 @@ extern crate self as hybrid_format;
 /// ```
 pub use hybrid_format_impls::const_args::ConstFormattedString;
 
-pub use hybrid_format_impls::{Formatted, HybridFormat};
+/// A not-yet-formatted value, that knows its formatted size, and can format(write) itself into a buffer without any reallocations.
+///
+/// # Safety
+/// It is up to you to make sure that `size()` returns the exact or maximum size of your object when formatted (in bytes)!
+/// `append()` uses this assumption to skip checks and avoid reallocation.
+///
+/// # Example
+/// ```
+/// use hybrid_format::{hformat, Formatted, HybridFormat};
+///
+/// #[derive(Clone, Copy)]
+/// struct Point {
+///     x: u8,
+///     y: u8
+/// }
+/// unsafe impl Formatted for Point {
+///     fn size(&self) -> usize {
+///         10
+///     }
+///     unsafe fn append(&self, buf: &mut String) {
+///         buf.push('(');
+///         unsafe { self.x.append(buf) };
+///         buf.push_str(", ");
+///         unsafe { self.y.append(buf) };
+///         buf.push(')');
+///     }
+/// }
+/// impl HybridFormat for Point {
+///     type Formatted<'a> = Self;
+///     fn format(&self) -> Self {
+///         *self
+///     }
+/// }
+///
+/// let p = Point { x: 42, y: 67 };
+/// assert_eq!(hformat!("p = {p}"), "p = (42, 67)")
+/// ```
+pub use hybrid_format_impls::Formatted;
 
-/// Macro that formats a string like [`format!`](https://doc.rust-lang.org/std/macro.format.html), but faster and better.
+/// Converts an argument into an intermediate representation (that can be borrowed) that implements `Formatted`, that can then be formatted.
+/// # Example
+/// ```
+/// use hybrid_format::{hformat, Formatted, HybridFormat};
+/// struct Line2D {
+///     slope: f64,
+///     intercept: f64,
+/// }
+/// impl HybridFormat for Line2D {
+///     type Formatted<'a>
+///         = f64
+///     where
+///         Self: 'a;
+///     fn format(&self) -> Self::Formatted<'_> {
+///         self.slope
+///     }
+/// }
+/// let my_line = Line2D { slope: 3.14, intercept: 0.0 };
+/// assert_eq!(hformat!("The line's slope is {my_line}."), "The line's slope is 3.14.");
+/// ```
+pub use hybrid_format_impls::HybridFormat;
+
+/// Formats a string like [`format!`](https://doc.rust-lang.org/std/macro.format.html), but faster.
 /// Constant arguments (literals, `const` blocks, `SCREAMING_SNAKE_CASE` names) are formatted at compile time.
 /// If every argument is a constant, the macro outputs a `&'static str`, otherwise it outputs a `String` built with a single allocation.
+///
+/// Format specs (fill, align, precision, ...) aren't supported yet.
+///
+/// The following types can be formatted both at compile-time and runtime (the implementations are very optimized):
+/// - `&str`
+/// - `bool`
+/// - `char`
+/// - `f32`/`f64`
+/// - `i8`,`i16`,`i32`,`i64`,`i128`,`isize`,`u8`,`u16`,`u32`,`u64`,`u128`,`usize`
 ///
 /// # Examples
 /// ```
