@@ -123,7 +123,7 @@ pub trait HybridFormat {
 - To type the character `{`, type `{{` (like the `format!()` macro)
 - To type the character `}`, type `}}` (like the `format!()` macro)
 - Format specs aren't supported yet (they can only be parsed right now)
-- Floats with zero decimal places are formatted with a trailing zero
+- Whole-number floats keep a trailing `.0`, and very small/large values use scientific notation (like `42e+67`)
 
 The goal is to eventually fully support [https://doc.rust-lang.org/std/fmt/index.html](https://doc.rust-lang.org/std/fmt/index.html):
 ```

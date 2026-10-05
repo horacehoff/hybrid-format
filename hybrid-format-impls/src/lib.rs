@@ -102,30 +102,25 @@ pub mod __private {
     unsafe impl Formatted for bool {
         #[inline(always)]
         fn size(&self) -> usize {
-            // this can only overallocate by one byte so it's worth it and avoids extra work
-            5
+            // this can only overallocate by four bytes so it's worth it and avoids extra work
+            8
         }
         #[inline]
         unsafe fn append(&self, buf: &mut String) {
-            let buf_len = buf.len();
-            debug_assert!(5 <= buf.capacity() - buf_len);
             unsafe {
-                // smol micro-optimization trick
-                core::ptr::copy_nonoverlapping(
-                    if *self {
-                        b"true".as_ptr()
+                let buf_vec = buf.as_mut_vec();
+                let buf_len = buf_vec.len();
+                debug_assert!(5 <= buf_vec.capacity() - buf_len);
+                buf_vec
+                    .as_mut_ptr()
+                    .add(buf_len)
+                    .cast::<[u8; 8]>()
+                    .write(if *self {
+                        *b"true\0\0\0\0"
                     } else {
-                        b"fals".as_ptr()
-                    },
-                    buf.as_mut_vec().as_mut_ptr().add(buf_len),
-                    4,
-                );
-                core::ptr::copy_nonoverlapping(
-                    "e".as_ptr(),
-                    buf.as_mut_vec().as_mut_ptr().add(buf_len + 4),
-                    1,
-                );
-                buf.as_mut_vec().set_len(buf_len + 5 - usize::from(*self));
+                        *b"false\0\0\0"
+                    });
+                buf_vec.set_len(buf_len + 5 - usize::from(*self));
             }
         }
     }
