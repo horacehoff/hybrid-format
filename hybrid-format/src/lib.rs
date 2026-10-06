@@ -1,59 +1,4 @@
-//! [`hformat!`] macro that formats a string like [`format!`](https://doc.rust-lang.org/std/macro.format.html), but faster.
-//! Supports `no_std`, though runtime formatting needs an allocator.
-//!
-//! Constant arguments (literals, `const` blocks, `SCREAMING_SNAKE_CASE` names) are formatted at compile time.
-//! If every argument is a constant, the macro outputs a `&'static str`, otherwise it outputs a `String` built with a single allocation.
-//!
-//! Format specs (fill, align, precision, ...) aren't supported yet.
-//!
-//! The following types can be formatted both at compile-time and runtime (the implementations are very optimized):
-//! - `&str`
-//! - `bool`
-//! - `char`
-//! - `f32`/`f64`
-//! - `i8`,`i16`,`i32`,`i64`,`i128`,`isize`,`u8`,`u16`,`u32`,`u64`,`u128`,`usize`
-//!
-//! To format your own types at compile-time, look at [`ConstFormattedString`].
-//! To format your own types at runtime, look at the two traits [`HybridFormat`] and [`Formatted`].
-//! # Examples
-//! ```
-//! use hybrid_format::hformat;
-//!
-//! assert_eq!(const { hformat!("{}", 42) }, format!("{}", 42));
-//! assert_eq!(const { hformat!("{42}") }, "42");
-//!
-//! assert_eq!(
-//!     const { hformat!("Float: {}", 4.2) },
-//!     format!("Float: {}", 4.2)
-//! );
-//!
-//! assert_eq!(
-//!     const { hformat!("Bool: {}", true) },
-//!     format!("Bool: {}", true)
-//! );
-//!
-//! assert_eq!(
-//!     const { hformat!("Char: {}", 'a') },
-//!     format!("Char: {}", 'a')
-//! );
-//!
-//! const MY_FLOAT: f64 = 4.2;
-//! assert_eq!(
-//!     const { hformat!("Float: {}", MY_FLOAT) },
-//!     format!("Float: {}", 4.2)
-//! );
-//!
-//! const MY_INT: i32 = 42;
-//! const MY_BOOL: bool = true;
-//! const MY_STR: &str = "Hello, world!";
-//! let f = 4.2 + 6.7;
-//! let c = 'a';
-//! assert_eq!(
-//!     hformat!("{MY_INT}:{MY_BOOL}:{MY_STR}:{f}:{c}"),
-//!     format!("{MY_INT}:{MY_BOOL}:{MY_STR}:{f}:{c}")
-//! );
-//! ```
-
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", env!("CARGO_PKG_README")))]
 #![cfg_attr(not(test), no_std)]
 extern crate alloc;
 extern crate self as hybrid_format;
@@ -115,8 +60,8 @@ pub use hybrid_format_impls::const_args::ConstFormattedString;
 /// A not-yet-formatted value, that knows its formatted size, and can format(write) itself into a buffer without any reallocations.
 ///
 /// # Safety
-/// It is up to you to make sure that `size()` returns the exact or maximum size of your object when formatted (in bytes)!
-/// `append()` uses this assumption to skip checks and avoid reallocation.
+/// It is up to you to make sure that [`Formatted::size()`] returns the exact or maximum size of your object when formatted (in bytes)!
+/// [`Formatted::append()`] uses this assumption to skip checks and avoid reallocation.
 ///
 /// # Example
 /// ```
@@ -151,7 +96,7 @@ pub use hybrid_format_impls::const_args::ConstFormattedString;
 /// ```
 pub use hybrid_format_impls::Formatted;
 
-/// Converts an argument into an intermediate representation (that can be borrowed) that implements `Formatted`, that can then be formatted.
+/// Converts an argument into an intermediate representation (that can be borrowed) that implements [`Formatted`], that can then be formatted.
 /// # Example
 /// ```
 /// use hybrid_format::{hformat, Formatted, HybridFormat};

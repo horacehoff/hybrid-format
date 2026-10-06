@@ -1,4 +1,4 @@
-//! Use the `hybrid-format` crate instead.
+//! Use the `hybrid-format` crate.
 
 #![cfg_attr(not(test), no_std)]
 extern crate alloc;
@@ -7,21 +7,18 @@ use alloc::string::String;
 #[doc(hidden)]
 pub mod const_args;
 
-/// A not-yet-formatted value, that knows its formatted size, and can format(write) itself into a buffer without any reallocations.
-/// # Safety
-/// It is up to you to make sure that `size()` returns the exact or maximum size of your object when formatted (in bytes)!
-/// `append()` uses this assumption to skip checks and avoid reallocation.
+#[expect(clippy::missing_safety_doc)]
 pub unsafe trait Formatted {
     /// The size of the object when formatted in bytes. Needs to be exact or at least an upper bound.
     fn size(&self) -> usize;
     /// Appends the formatted object to `buf`.
     /// # Safety
-    /// This assumes `buf` still has at least `size()` bytes of remaining capacity.
+    /// This assumes `buf` still has at least [`Formatted::size()`] bytes of remaining capacity.
     unsafe fn append(&self, buf: &mut String);
 }
 
-/// Converts an argument into an intermediate representation (that can be borrowed) that implements `Formatted`, that can then be formatted.
 pub trait HybridFormat {
+    /// The intermediate representation, that actually gets written into the final formatted string.
     type Formatted<'a>: Formatted
     where
         Self: 'a;

@@ -1,6 +1,6 @@
 [package]
 name = "hybrid-format"
-description = "A `format!` alternative that formats constants at compile-time and everything else much faster at runtime with a single allocation. Extensible with your own types and no_std."
+description = "A hybrid format! alternative that formats constants at compile-time and everything else much faster at runtime with a single allocation. Extensible with your own types and no_std."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

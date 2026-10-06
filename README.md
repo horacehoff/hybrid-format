@@ -16,15 +16,54 @@ The following types can be formatted both at compile-time and runtime (the imple
 - `f32`/`f64`
 - `i8`,`i16`,`i32`,`i64`,`i128`,`isize`,`u8`,`u16`,`u32`,`u64`,`u128`,`usize`
 
+## Usage
+```rust
+use hybrid_format::hformat;
+const MY_INT: i32 = 42;
+const MY_BOOL: bool = true;
+const MY_STR: &str = "Hello, world!";
+let f = 4.2 + 6.7;
+let c = 'a';
+assert_eq!(
+    hformat!("{MY_INT}:{MY_BOOL}:{MY_STR}:{f}:{c}"),
+    format!("{MY_INT}:{MY_BOOL}:{MY_STR}:{f}:{c}")
+);
+
+assert_eq!(const { hformat!("{}", 42) }, format!("{}", 42));
+
+assert_eq!(const { hformat!("{42}") }, "42");
+
+assert_eq!(
+    const { hformat!("Float: {}", 4.2) },
+    format!("Float: {}", 4.2)
+);
+
+assert_eq!(
+    const { hformat!("Bool: {}", true) },
+    format!("Bool: {}", true)
+);
+
+assert_eq!(
+    const { hformat!("Char: {}", 'a') },
+    format!("Char: {}", 'a')
+);
+
+const MY_FLOAT: f64 = 4.2;
+assert_eq!(
+    const { hformat!("Float: {}", MY_FLOAT) },
+    format!("Float: {}", 4.2)
+);
+```
+
 ## Compile-time formatting
 To format your own types at compile-time, you need to pass a `ConstFormattedString` literal/constant or a function that returns a `ConstFormattedString`.
-```rust
+```rust ignore
 impl<const N: usize> ConstFormattedString<N> {
     pub const fn new() -> Self;
     pub const fn len(&self) -> usize;
     pub const fn is_empty(&self) -> bool;
     pub const fn as_str(&self) -> &str;
-    pub const fn push_str(mut self, string: &str) -> Self;
+    pub const fn push_str(self, string: &str) -> Self;
     pub const fn push_char(self, c: char) -> Self;
     pub const fn push_bool(self, b: bool) -> Self;
     pub const fn push_f64(self, f: f64) -> Self;
@@ -94,7 +133,7 @@ fn main() {
 ## Runtime formatting
 The built-in implementations aim to be as fast as possible.
 
-To extend the implementations, and format your own types at runtime, use those two traits:
+To format your own types at runtime, use those two traits:
 ```rust
 /// A not-yet-formatted value, that knows its formatted size, and can format(write) itself into a buffer without any reallocations.
 /// # Safety
@@ -122,11 +161,12 @@ pub trait HybridFormat {
 ## Limitations / Quirks
 - To type the character `{`, type `{{` (like the `format!()` macro)
 - To type the character `}`, type `}}` (like the `format!()` macro)
+- Currently, `{0}` means the expression `0`. Named arguments aren't supported yet.
 - Format specs aren't supported yet (they can only be parsed right now)
 - Whole-number floats keep a trailing `.0`, and very small/large values use scientific notation (like `42e+67`)
 
 The goal is to eventually fully support [https://doc.rust-lang.org/std/fmt/index.html](https://doc.rust-lang.org/std/fmt/index.html):
-```
+```text
 format_string := text [ maybe_format text ] *
 maybe_format := '{' '{' | '}' '}' | format
 format := '{' [ argument ] [ ':' format_spec ] [ ws ] * '}'
@@ -136,69 +176,18 @@ format_spec := [[fill]align][sign]['#']['0'][width]['.' precision][type]
 fill := character
 align := '<' | '^' | '>'
 sign := '+' | '-'
-width := count
+width := countt
 precision := count | '*'
 type := '?' | 'x?' | 'X?' | 'o' | 'x' | 'X' | 'p' | 'b' | 'e' | 'E'
 count := parameter | integer
 parameter := argument '$'
 ```
 
-## Usage
-```rust
-use hybrid_format::hformat;
-#[test]
-fn hybrid() {
-    const MY_INT: i32 = 42;
-    const MY_BOOL: bool = true;
-    const MY_STR: &str = "Hello, world!";
-    let f = 4.2 + 6.7;
-    let c = 'a';
-    assert_eq!(
-        hformat!("{MY_INT}:{MY_BOOL}:{MY_STR}:{f}:{c}"),
-        format!("{MY_INT}:{MY_BOOL}:{MY_STR}:{f}:{c}")
-    );
-}
-#[test]
-fn const_int_literal() {
-    assert_eq!(const { hformat!("{}", 42) }, format!("{}", 42));
-    assert_eq!(const { hformat!("{42}") }, "42");
-}
-#[test]
-fn const_float_literal() {
-    assert_eq!(
-        const { hformat!("Float: {}", 4.2) },
-        format!("Float: {}", 4.2)
-    );
-}
-#[test]
-fn const_bool_literal() {
-    assert_eq!(
-        const { hformat!("Bool: {}", true) },
-        format!("Bool: {}", true)
-    );
-}
-#[test]
-fn const_char_literal() {
-    assert_eq!(
-        const { hformat!("Char: {}", 'a') },
-        format!("Char: {}", 'a')
-    );
-}
-#[test]
-fn const_float_variable() {
-    const MY_FLOAT: f64 = 4.2;
-    assert_eq!(
-        const { hformat!("Float: {}", MY_FLOAT) },
-        format!("Float: {}", 4.2)
-    );
-}
-```
-
 ## Benchmarks
 | Benchmark    | `std::format!` | `hformat!` | Speedup compared to `std::format!` |
 | -------- | ------- | ------- | ------- |
-| constant  | 13.4ns | 311.2ps (just a &'static str) | 43x |
-| all_dynamic | 117ns | 36ns | 3.25x |
-| ten_const_ten_dynamic | 446.8ns | 63.8ns | 7x |
+| `format!("Hello, world!")`  | 13.4ns | 311.2ps (just a &'static str) | 43x |
+| `all_dynamic` (`i32`, `f64`, `&str`) | 117ns | 36ns | 3.25x |
+| `ten_const_ten_dynamic` (`f64`, `i32`, `bool`, `&str`, `char`) | 446.8ns | 63.8ns | 7x |
 
 Ad astra per aspera!

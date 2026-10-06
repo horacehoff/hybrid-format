@@ -14,7 +14,7 @@ license = "Apache-2.0"
 repository = "https://github.com/horacehoff/hybrid-format"
 readme = "README.md"
 categories = ["no-std","value-formatting"]
-keywords = ["format", "formating", "const", "no-std", "string"]
+keywords = ["format", "formatting", "const", "no-std", "string"]
 
 [workspace.dependencies]
 hybrid-format-impls = { path = "hybrid-format-impls", version = "=0.1.0" }

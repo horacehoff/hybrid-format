@@ -1,4 +1,4 @@
-//! Use the `hybrid-format` crate instead.
+//! Use the `hybrid-format` crate.
 
 use proc_macro::TokenStream;
 use proc_macro_crate::{FoundCrate, crate_name};
@@ -95,8 +95,6 @@ fn compile_error(span: Span, message: String) -> TokenStream {
 
 #[proc_macro]
 #[inline]
-/// # Panics
-/// It will panic if the number of arguments given doesn't match the number of positional parameters
 pub fn hformat(input: TokenStream) -> TokenStream {
     let HFormatInput { format_str, args } = parse_macro_input!(input as HFormatInput);
     let hformat = import_hformat();
@@ -141,7 +139,7 @@ pub fn hformat(input: TokenStream) -> TokenStream {
     if positional_parameters.next().is_some() {
         return compile_error(
             span,
-            "there are more positional parameters than arguments".into(),
+            "there are more arguments than positional parameters".into(),
         );
     }
 

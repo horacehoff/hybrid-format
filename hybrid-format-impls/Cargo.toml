@@ -1,6 +1,6 @@
 [package]
 name = "hybrid-format-impls"
-description = "Use the hybrid-format crate instead."
+description = "Use the hybrid-format crate."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
