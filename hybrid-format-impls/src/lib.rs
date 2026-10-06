@@ -132,6 +132,15 @@ pub mod __private {
             *self
         }
     }
+    #[inline(never)]
+    // takes in a u32 because chars trigger a warning
+    const unsafe extern "C" fn write_char(c: u32, buf: *mut u8) -> usize {
+        unsafe {
+            char::from_u32_unchecked(c)
+                .encode_utf8(core::slice::from_raw_parts_mut(buf, 4))
+                .len()
+        }
+    }
     unsafe impl Formatted for char {
         #[inline(always)]
         fn size(&self) -> usize {
@@ -143,12 +152,13 @@ pub mod __private {
             let buf_len = buf.len();
             debug_assert!(4 <= buf.capacity() - buf_len);
             unsafe {
-                let char_len = self
-                    .encode_utf8(core::slice::from_raw_parts_mut(
-                        buf.as_mut_vec().as_mut_ptr().add(buf_len),
-                        4,
-                    ))
-                    .len();
+                let buf_ptr = buf.as_mut_vec().as_mut_ptr().add(buf_len);
+                let char_len = if self.is_ascii() {
+                    buf_ptr.write(*self as u8);
+                    1
+                } else {
+                    write_char(u32::from(*self), buf_ptr)
+                };
                 buf.as_mut_vec().set_len(buf_len + char_len);
             }
         }
@@ -227,7 +237,7 @@ pub mod __private {
     }
 
     #[inline(never)]
-    fn write_int<N: lexical_core::ToLexical>(n: N, buf: *mut u8) -> usize {
+    unsafe fn write_int<N: lexical_core::ToLexical>(n: N, buf: *mut u8) -> usize {
         lexical_core::write(n, unsafe {
             core::slice::from_raw_parts_mut(buf, N::FORMATTED_SIZE_DECIMAL)
         })
