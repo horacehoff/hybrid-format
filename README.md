@@ -1,4 +1,7 @@
 # Hybrid-Format
+[![Rust](https://github.com/horacehoff/hybrid-format/workflows/Rust/badge.svg)](https://github.com/horacehoff/hybrid-format/actions)
+[![crates-io](https://img.shields.io/crates/v/hybrid-format.svg)](https://crates.io/crates/hybrid-format)
+[![api-docs](https://docs.rs/hybrid-format/badge.svg)](https://docs.rs/hybrid-format/*)
 > Rust 1.87+, `no_std` (runtime formatting needs an allocator)
 
 `hformat!` macro that formats a string like [`format!`](https://doc.rust-lang.org/std/macro.format.html), but faster.
@@ -15,6 +18,11 @@ The following types can be formatted both at compile-time and runtime (the imple
 - `char`
 - `f32`/`f64`
 - `i8`,`i16`,`i32`,`i64`,`i128`,`isize`,`u8`,`u16`,`u32`,`u64`,`u128`,`usize`
+
+## Install
+```sh
+cargo add hybrid-format
+```
 
 ## Usage
 ```rust
@@ -134,7 +142,7 @@ fn main() {
 The built-in implementations aim to be as fast as possible.
 
 To format your own types at runtime, use those two traits:
-```rust
+```rust ignore
 /// A not-yet-formatted value, that knows its formatted size, and can format(write) itself into a buffer without any reallocations.
 /// # Safety
 /// It is up to you to make sure that `size()` returns the exact or maximum size of your object when formatted (in bytes)!
@@ -163,7 +171,7 @@ pub trait HybridFormat {
 - To type the character `}`, type `}}` (like the `format!()` macro)
 - Currently, `{0}` means the expression `0`. Named arguments aren't supported yet.
 - Format specs aren't supported yet (they can only be parsed right now)
-- Whole-number floats keep a trailing `.0`, and very small/large values use scientific notation (like `42e+67`)
+- Whole-number floats keep a trailing `.0`, and very small/large values use scientific notation (like `4.2e+67`)
 
 The goal is to eventually fully support [https://doc.rust-lang.org/std/fmt/index.html](https://doc.rust-lang.org/std/fmt/index.html):
 ```text
@@ -176,7 +184,7 @@ format_spec := [[fill]align][sign]['#']['0'][width]['.' precision][type]
 fill := character
 align := '<' | '^' | '>'
 sign := '+' | '-'
-width := countt
+width := count
 precision := count | '*'
 type := '?' | 'x?' | 'X?' | 'o' | 'x' | 'X' | 'p' | 'b' | 'e' | 'E'
 count := parameter | integer
@@ -184,7 +192,7 @@ parameter := argument '$'
 ```
 
 ## Benchmarks
-| Benchmark    | `std::format!` | `hformat!` | Speedup compared to `std::format!` |
+| Benchmark | `std::format!` | `hformat!` | Speedup compared to `std::format!` |
 | -------- | ------- | ------- | ------- |
 | `format!("Hello, world!")`  | 13.4ns | 311.2ps (just a &'static str) | 43x |
 | `all_dynamic` (`i32`, `f64`, `&str`) | 117ns | 36ns | 3.25x |
