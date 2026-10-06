@@ -164,26 +164,47 @@ pub mod __private {
         }
     }
 
-    unsafe impl Formatted for f64 {
-        #[inline(always)]
-        fn size(&self) -> usize {
-            24
-        }
-        #[inline]
-        unsafe fn append(&self, buf: &mut String) {
-            unsafe { push_str_unchecked(buf, zmij::Buffer::new().format(*self)) }
-        }
+    macro_rules! HybridFormatFloat {
+        ($($t: ty )*) => {$(
+            unsafe impl Formatted for $t {
+                #[inline(always)]
+                fn size(&self) -> usize {
+                    24
+                }
+                #[inline]
+                unsafe fn append(&self, buf: &mut String) {
+                    #[inline(never)]
+                    // extern "C" removes the unwind cleanup code, it's the only way I found
+                    unsafe extern "C" fn write_float(f: $t, buf: *mut u8) -> usize {
+                        if f.is_finite() {
+                            unsafe {(*buf.cast::<zmij::Buffer>()).format_finite(f).len()}
+                        } else {
+                            core::hint::cold_path();
+                            let (bytes, len) = if f.is_nan() {
+                                (*b"NaN\0",3)
+                            } else if f.is_sign_negative() {
+                                (*b"-inf",4)
+                            } else {
+                                (*b"inf\0",3)
+                            };
+                            unsafe {buf.cast::<[u8;4]>().write(bytes)};
+                            len
+                        }
+                    }
+                    let buf_len = buf.len();
+                    debug_assert!(24 <= buf.capacity() - buf_len);
+                    unsafe {
+                        let len = write_float(*self, buf.as_mut_vec().as_mut_ptr().add(buf_len));
+                        buf.as_mut_vec().set_len(buf_len + len);
+                    }
+                }
+            }
+        )*
+        };
     }
-    unsafe impl Formatted for f32 {
-        #[inline(always)]
-        fn size(&self) -> usize {
-            24
-        }
-        #[inline]
-        unsafe fn append(&self, buf: &mut String) {
-            unsafe { push_str_unchecked(buf, zmij::Buffer::new().format(*self)) }
-        }
-    }
+
+    HybridFormatFloat!(f32 f64);
+
     impl HybridFormat for f64 {
         type Formatted<'a>
             = Self
@@ -206,8 +227,11 @@ pub mod __private {
     }
 
     #[inline(never)]
-    fn write_int<N: lexical_core::ToLexical>(n: N, buf: &mut [u8]) -> usize {
-        lexical_core::write(n, buf).len()
+    fn write_int<N: lexical_core::ToLexical>(n: N, buf: *mut u8) -> usize {
+        lexical_core::write(n, unsafe {
+            core::slice::from_raw_parts_mut(buf, N::FORMATTED_SIZE_DECIMAL)
+        })
+        .len()
     }
 
     macro_rules! HybridFormatIntUnsigned {
@@ -219,11 +243,10 @@ pub mod __private {
                 }
                 #[inline]
                 unsafe fn append(&self, buf: &mut String) {
-                    const MAX_SIZE: usize = <$t>::FORMATTED_SIZE_DECIMAL;
                     let buf_len = buf.len();
-                    debug_assert!(MAX_SIZE <= buf.capacity() - buf_len);
+                    debug_assert!(<$t>::FORMATTED_SIZE_DECIMAL <= buf.capacity() - buf_len);
                     unsafe {
-                        let written_bytes = write_int(*self, core::slice::from_raw_parts_mut(buf.as_mut_vec().as_mut_ptr().add(buf_len), MAX_SIZE));
+                        let written_bytes = write_int(*self, buf.as_mut_vec().as_mut_ptr().add(buf_len));
                         buf.as_mut_vec().set_len(buf_len + written_bytes);
                     }
                 }
@@ -249,15 +272,14 @@ pub mod __private {
                 }
                 #[inline]
                 unsafe fn append(&self, buf: &mut String) {
-                    const MAX_SIZE: usize = <$u>::FORMATTED_SIZE_DECIMAL;
                     let buf_len = buf.len();
-                    debug_assert!(MAX_SIZE < buf.capacity() - buf_len);
+                    debug_assert!(<$u>::FORMATTED_SIZE_DECIMAL < buf.capacity() - buf_len);
                     unsafe {
                         // asm (on arm64) output shows that this is the smallest and fastest option
                         let buf_ptr = buf.as_mut_vec().as_mut_ptr().add(buf_len);
                         buf_ptr.write(b'-');
                         let is_int_neg = usize::from(*self < 0);
-                        let written_bytes = write_int(self.unsigned_abs(), core::slice::from_raw_parts_mut(buf_ptr.add(is_int_neg), MAX_SIZE));
+                        let written_bytes = write_int(self.unsigned_abs(), buf_ptr.add(is_int_neg));
                         buf.as_mut_vec().set_len(buf_len + written_bytes + is_int_neg);
                     }
                 }

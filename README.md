@@ -2,7 +2,8 @@
 [![Rust](https://github.com/horacehoff/hybrid-format/workflows/Rust/badge.svg)](https://github.com/horacehoff/hybrid-format/actions)
 [![crates-io](https://img.shields.io/crates/v/hybrid-format.svg)](https://crates.io/crates/hybrid-format)
 [![api-docs](https://docs.rs/hybrid-format/badge.svg)](https://docs.rs/hybrid-format/*)
-> Rust 1.87+, `no_std` (runtime formatting needs an allocator)
+
+Rust 1.95+, `no_std` (runtime formatting needs an allocator)
 
 `hformat!` macro that formats a string like [`format!`](https://doc.rust-lang.org/std/macro.format.html), but faster.
 
