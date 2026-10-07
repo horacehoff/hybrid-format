@@ -5,6 +5,58 @@
 #[doc(hidden)]
 pub struct HybridFormatConstArg<T>(pub T);
 
+/// A string that is at most N bytes big and is built at compile time.
+/// Use this when you want to format your own types at compile-time.
+///
+/// # Example
+///
+/// ```
+/// use hybrid_format::hformat;
+/// use hybrid_format::ConstFormattedString;
+///
+/// struct Person {
+///     first_name: &'static str,
+///     last_name: &'static str,
+///     age: u8,
+///     balance: f64,
+/// }
+/// impl Person {
+///     const fn format(&self) -> ConstFormattedString<64> {
+///         ConstFormattedString::new()
+///             .push_str(self.last_name)
+///             .push_str(", ")
+///             .push_str(self.first_name)
+///             .push_str(" | Age: ")
+///             .push_u8(self.age)
+///             .push_str(" | $")
+///             .push_f64(self.balance)
+///     }
+/// }
+/// fn main() {
+///     const RANDOM_GUY: Person = Person {
+///         first_name: "John",
+///         last_name: "Doe",
+///         age: 40,
+///         balance: 32.0,
+///     };
+///     // You can format it once, at compile time, then use it by name like any other constant
+///     const RANDOM_GUY_STR: ConstFormattedString<64> = RANDOM_GUY.format();
+///     const GREETING: &str = hformat!("Hello, {RANDOM_GUY_STR}!");
+///
+///     // You can also compute it at compile-time with a const block
+///     const SAME_GREETING: &str = hformat!("Hello, {}!", const { RANDOM_GUY.format() });
+///
+///     assert_eq!(GREETING, "Hello, Doe, John | Age: 40 | $32.0!");
+///     assert_eq!(GREETING, SAME_GREETING);
+///
+///     // And you can also mix it with runtime values
+///     let id = std::hint::black_box(0);
+///     assert_eq!(
+///         hformat!("#{id} - {RANDOM_GUY_STR}"),
+///         "#0 - Doe, John | Age: 40 | $32.0"
+///     );
+/// }
+/// ```
 pub struct ConstFormattedString<const N: usize> {
     buf: [u8; N],
     len: usize,

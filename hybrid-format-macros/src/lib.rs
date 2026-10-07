@@ -1,25 +1,11 @@
 //! Use the `hybrid-format` crate.
 
 use proc_macro::TokenStream;
-use proc_macro_crate::{FoundCrate, crate_name};
 use proc_macro2::Span;
 use quote::quote;
-use syn::{BinOp, Expr, Ident, Lit, LitStr, UnOp, parse_macro_input};
+use syn::{BinOp, Expr, Lit, LitStr, UnOp, parse_macro_input};
 
 mod parser;
-
-fn import_hformat() -> proc_macro2::TokenStream {
-    let found_crate =
-        crate_name("hybrid-format").expect("hybrid-format is present in `Cargo.toml`");
-
-    match found_crate {
-        FoundCrate::Itself => quote!(::hybrid_format),
-        FoundCrate::Name(name) => {
-            let ident = Ident::new(&name, Span::call_site());
-            quote!(::#ident)
-        }
-    }
-}
 
 struct HFormatInput {
     format_str: LitStr,
@@ -92,7 +78,7 @@ fn const_arg(
     hformat: &proc_macro2::TokenStream,
     expr: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
-    quote!(const {#hformat::__private::const_args::HybridFormatConstArg(#expr).format_const()}.as_const_arg())
+    quote!(const {#hformat::__private::HybridFormatConstArg(#expr).format_const()}.as_const_arg())
 }
 
 fn get_literal_type(expr: &Expr) -> Option<proc_macro2::TokenStream> {
@@ -148,11 +134,12 @@ fn compile_error(span: Span, message: String) -> TokenStream {
     syn::Error::new(span, message).into_compile_error().into()
 }
 
+#[doc(hidden)]
 #[proc_macro]
 #[inline]
 pub fn hformat(input: TokenStream) -> TokenStream {
     let HFormatInput { format_str, args } = parse_macro_input!(input as HFormatInput);
-    let hformat = import_hformat();
+    let hformat = quote!(__hitchhikers_guide_to_hybrid_format);
     let span = format_str.span();
 
     let format_parts = match parser::parse_format_string(&format_str.value()) {
@@ -179,12 +166,17 @@ pub fn hformat(input: TokenStream) -> TokenStream {
                             );
                         }
                     },
-                    parser::Argument::Expression(e) => match syn::parse_str::<Expr>(&e) {
-                        Ok(expr) => expr,
-                        Err(err) => {
-                            return compile_error(span, format!("invalid expression `{e}`: {err}"));
+                    parser::Argument::Expression(e) => {
+                        match LitStr::new(&e, span).parse::<Expr>() {
+                            Ok(expr) => expr,
+                            Err(err) => {
+                                return compile_error(
+                                    span,
+                                    format!("invalid expression `{e}`: {err}"),
+                                );
+                            }
                         }
-                    },
+                    }
                     parser::Argument::Index(_) => unreachable!("Please report this bug!"),
                 };
                 format_tokens.push(format_expr(&hformat, &expr));

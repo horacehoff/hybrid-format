@@ -1,61 +1,11 @@
 #![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", env!("CARGO_PKG_README")))]
 #![cfg_attr(not(test), no_std)]
 extern crate alloc;
-extern crate self as hybrid_format;
 
-/// A string that is at most N bytes big and is built at compile time.
-/// Use this when you want to format your own types at compile-time.
-///
-/// # Example
-///
-/// ```
-/// use hybrid_format::hformat;
-/// use hybrid_format::ConstFormattedString;
-///
-/// struct Person {
-///     first_name: &'static str,
-///     last_name: &'static str,
-///     age: u8,
-///     balance: f64,
-/// }
-/// impl Person {
-///     const fn format(&self) -> ConstFormattedString<64> {
-///         ConstFormattedString::new()
-///             .push_str(self.last_name)
-///             .push_str(", ")
-///             .push_str(self.first_name)
-///             .push_str(" | Age: ")
-///             .push_u8(self.age)
-///             .push_str(" | $")
-///             .push_f64(self.balance)
-///     }
-/// }
-/// fn main() {
-///     const RANDOM_GUY: Person = Person {
-///         first_name: "John",
-///         last_name: "Doe",
-///         age: 40,
-///         balance: 32.0,
-///     };
-///     // You can format it once, at compile time, then use it by name like any other constant
-///     const RANDOM_GUY_STR: ConstFormattedString<64> = RANDOM_GUY.format();
-///     const GREETING: &str = hformat!("Hello, {RANDOM_GUY_STR}!");
-///
-///     // You can also compute it at compile-time with a const block
-///     const SAME_GREETING: &str = hformat!("Hello, {}!", const { RANDOM_GUY.format() });
-///
-///     assert_eq!(GREETING, "Hello, Doe, John | Age: 40 | $32.0!");
-///     assert_eq!(GREETING, SAME_GREETING);
-///
-///     // And you can also mix it with runtime values
-///     let id = std::hint::black_box(0);
-///     assert_eq!(
-///         hformat!("#{id} - {RANDOM_GUY_STR}"),
-///         "#0 - Doe, John | Age: 40 | $32.0"
-///     );
-/// }
-/// ```
-pub use hybrid_format_impls::const_args::ConstFormattedString;
+mod const_args;
+mod impls;
+
+pub use const_args::ConstFormattedString;
 
 /// A not-yet-formatted value, that knows its formatted size, and can format(write) itself into a buffer without any reallocations.
 ///
@@ -94,7 +44,14 @@ pub use hybrid_format_impls::const_args::ConstFormattedString;
 /// let p = Point { x: 42, y: 67 };
 /// assert_eq!(hformat!("p = {p}"), "p = (42, 67)")
 /// ```
-pub use hybrid_format_impls::Formatted;
+pub unsafe trait Formatted {
+    /// The size of the object when formatted in bytes. Needs to be exact or at least an upper bound.
+    fn size(&self) -> usize;
+    /// Appends the formatted object to `buf`.
+    /// # Safety
+    /// This assumes `buf` still has at least [`Formatted::size()`] bytes of remaining capacity.
+    unsafe fn append(&self, buf: &mut alloc::string::String);
+}
 
 /// Converts an argument into an intermediate representation (that can be borrowed) that implements [`Formatted`], that can then be formatted.
 /// # Example
@@ -116,9 +73,17 @@ pub use hybrid_format_impls::Formatted;
 /// let my_line = Line2D { slope: 3.14, intercept: 0.0 };
 /// assert_eq!(hformat!("The line's slope is {my_line}."), "The line's slope is 3.14.");
 /// ```
-pub use hybrid_format_impls::HybridFormat;
+pub trait HybridFormat {
+    /// The intermediate representation, that actually gets written into the final formatted string.
+    type Formatted<'a>: Formatted
+    where
+        Self: 'a;
+    /// Formats the object into an intermediate representation, that can be borrowed.
+    fn format(&self) -> Self::Formatted<'_>;
+}
 
 /// Formats a string like [`format!`](https://doc.rust-lang.org/std/macro.format.html), but faster.
+///
 /// Constant arguments (literals, `const` blocks, `SCREAMING_SNAKE_CASE` names) are formatted at compile time.
 /// If every argument is a constant, the macro outputs a `&'static str`, otherwise it outputs a `String` built with a single allocation.
 ///
@@ -163,15 +128,21 @@ pub use hybrid_format_impls::HybridFormat;
 ///     format!("{MY_INT}:{MY_BOOL}:{MY_STR}:{f}:{c}")
 /// );
 /// ```
-pub use hybrid_format_macros::hformat;
+#[macro_export]
+macro_rules! hformat {
+    ($($args: tt)*) => {{
+        use $crate as __hitchhikers_guide_to_hybrid_format;
+        $crate::__private::hformat!($($args)*)
+    }};
+}
 
 #[doc(hidden)]
 pub mod __private {
+    pub use crate::const_args::HybridFormatConstArg;
+    pub use crate::impls::push_str_unchecked;
     pub use alloc::string::String;
-
     pub use const_format;
-    pub use hybrid_format_impls::const_args;
-    pub use hybrid_format_impls::push_str_unchecked;
+    pub use hybrid_format_macros::hformat;
 }
 
 #[macro_export]
@@ -238,8 +209,7 @@ macro_rules! __hformat_internal {
 
 #[cfg(test)]
 mod tests {
-    use hybrid_format_impls::const_args::ConstFormattedString;
-    use hybrid_format_macros::hformat;
+    use crate::ConstFormattedString;
 
     #[test]
     fn int_const_literal() {

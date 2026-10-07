@@ -2,7 +2,6 @@
 members = [
     "hybrid-format",
     "hybrid-format-macros",
-    "hybrid-format-impls",
 ]
 resolver = "3"
 
@@ -17,7 +16,6 @@ categories = ["no-std","value-formatting"]
 keywords = ["format", "formatting", "const", "no-std", "string"]
 
 [workspace.dependencies]
-hybrid-format-impls = { path = "hybrid-format-impls", version = "=0.1.0" }
 hybrid-format-macros = { path = "hybrid-format-macros", version = "=0.1.0" }
 
 [workspace.lints.clippy]

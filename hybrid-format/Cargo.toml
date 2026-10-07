@@ -12,8 +12,10 @@ categories.workspace = true
 
 [dependencies]
 hybrid-format-macros.workspace = true
-hybrid-format-impls.workspace = true
 const_format = "0.2.36"
+const-zmij = "0.1.0"
+lexical-core = {version="1.0.6", default-features=false, features=["write-integers"]}
+zmij = "1.0.23"
 
 [dev-dependencies]
 criterion = "0.8.2"
