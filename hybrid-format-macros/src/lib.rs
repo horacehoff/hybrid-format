@@ -8,6 +8,7 @@ use syn::{BinOp, Expr, Lit, LitStr, UnOp, parse_macro_input};
 mod parser;
 
 struct HFormatInput {
+    buf_tgt: Option<proc_macro2::TokenTree>,
     format_str: LitStr,
     args: syn::punctuated::Punctuated<syn::Expr, syn::Token![,]>,
 }
@@ -74,13 +75,6 @@ fn is_probably_const(expr: &Expr) -> bool {
     }
 }
 
-fn const_arg(
-    hformat: &proc_macro2::TokenStream,
-    expr: &proc_macro2::TokenStream,
-) -> proc_macro2::TokenStream {
-    quote!(const {#hformat::__private::HybridFormatConstArg(#expr).format_const()}.as_const_arg())
-}
-
 fn get_literal_type(expr: &Expr) -> Option<proc_macro2::TokenStream> {
     match expr {
         Expr::Lit(lit) => match &lit.lit {
@@ -102,13 +96,11 @@ fn get_literal_type(expr: &Expr) -> Option<proc_macro2::TokenStream> {
 
 fn format_expr(hformat: &proc_macro2::TokenStream, expr: &Expr) -> proc_macro2::TokenStream {
     if is_probably_const(expr) {
-        const_arg(
-            hformat,
-            &get_literal_type(expr).map_or_else(
-                || quote!(#expr),
-                |literal_type| quote!((#expr) as #literal_type),
-            ),
-        )
+        let expr = get_literal_type(expr).map_or_else(
+            || quote!(#expr),
+            |literal_type| quote!((#expr) as #literal_type),
+        );
+        quote!(const {#hformat::__private::HybridFormatConstArg(#expr).format_const()}.as_const_arg())
     } else {
         quote! ({#expr})
     }
@@ -116,16 +108,24 @@ fn format_expr(hformat: &proc_macro2::TokenStream, expr: &Expr) -> proc_macro2::
 
 impl syn::parse::Parse for HFormatInput {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let buf_tgt = if input.peek(syn::token::Paren) {
+            Some(input.parse()?)
+        } else {
+            None
+        };
         let format_str = input.parse()?;
 
-        let args = if input.peek(syn::Token![,]) {
-            input.parse::<syn::Token![,]>()?;
+        let args = if input.parse::<Option<syn::Token![,]>>()?.is_some() {
             syn::punctuated::Punctuated::parse_terminated(input)?
         } else {
             syn::punctuated::Punctuated::new()
         };
 
-        Ok(Self { format_str, args })
+        Ok(Self {
+            buf_tgt,
+            format_str,
+            args,
+        })
     }
 }
 
@@ -138,7 +138,11 @@ fn compile_error(span: Span, message: String) -> TokenStream {
 #[proc_macro]
 #[inline]
 pub fn hformat(input: TokenStream) -> TokenStream {
-    let HFormatInput { format_str, args } = parse_macro_input!(input as HFormatInput);
+    let HFormatInput {
+        buf_tgt,
+        format_str,
+        args,
+    } = parse_macro_input!(input as HFormatInput);
     let hformat = quote!(__hitchhikers_guide_to_hybrid_format);
     let span = format_str.span();
 
@@ -147,8 +151,42 @@ pub fn hformat(input: TokenStream) -> TokenStream {
         Err(msg) => return compile_error(span, msg),
     };
 
+    let mut named_arguments = Vec::new();
+    let mut arg_values = Vec::new();
+    let mut runtime_bindings = Vec::new();
+    for (i, arg) in args.into_iter().enumerate() {
+        let (name, value) = match arg {
+            Expr::Assign(assign) => {
+                let Expr::Path(path) = *assign.left else {
+                    return compile_error(span, "expected name = value".into());
+                };
+                let Some(name) = path.path.get_ident().cloned() else {
+                    return compile_error(span, "expected name = value".into());
+                };
+                (Some(name), *assign.right)
+            }
+            _ if named_arguments.last().is_some_and(Option::is_some) => {
+                return compile_error(
+                    span,
+                    "positional arguments cannot follow named arguments".into(),
+                );
+            }
+            val => (None, val),
+        };
+        arg_values.push(if is_probably_const(&value) {
+            format_expr(&hformat, &value)
+        } else {
+            let arg_binding =
+                quote::format_ident!("__hybrid_format_arg{}", i, span = Span::mixed_site());
+            runtime_bindings.push(quote!(let #arg_binding = &(#value);));
+            quote!({#arg_binding})
+        });
+        named_arguments.push(name);
+    }
+
+    let mut used = vec![false; arg_values.len()];
+    let mut next_positional = 0;
     let mut format_tokens = Vec::new();
-    let mut positional_parameters = args.iter();
     for part in format_parts {
         match part {
             parser::FormatPart::Text(text) => format_tokens.push(quote!(#text)),
@@ -156,44 +194,48 @@ pub fn hformat(input: TokenStream) -> TokenStream {
                 if spec != parser::FormatSpec::default() {
                     return compile_error(span, "format specs are not supported yet".into());
                 }
-                let expr = match arg {
-                    parser::Argument::NextPositional => match positional_parameters.next() {
-                        Some(expr) => expr.clone(),
-                        None => {
-                            return compile_error(
-                                span,
-                                "there are more positional parameters than arguments".into(),
-                            );
-                        }
-                    },
+                let index = match arg {
+                    parser::Argument::NextPositional => {
+                        let curr_idx = next_positional;
+                        next_positional += 1;
+                        curr_idx
+                    }
+                    parser::Argument::Index(idx) => idx,
                     parser::Argument::Expression(e) => {
-                        match LitStr::new(&e, span).parse::<Expr>() {
-                            Ok(expr) => expr,
-                            Err(err) => {
-                                return compile_error(
-                                    span,
-                                    format!("invalid expression `{e}`: {err}"),
-                                );
+                        if let Some(idx) = named_arguments
+                            .iter()
+                            .position(|name| name.as_ref().is_some_and(|name| *name == e))
+                        {
+                            idx
+                        } else {
+                            match LitStr::new(&e, span).parse::<Expr>() {
+                                Ok(expr) => format_tokens.push(format_expr(&hformat, &expr)),
+                                Err(err) => {
+                                    return compile_error(
+                                        span,
+                                        format!("invalid expression `{e}`: {err}"),
+                                    );
+                                }
                             }
+                            continue;
                         }
                     }
-                    parser::Argument::Index(_) => unreachable!("Please report this bug!"),
                 };
-                format_tokens.push(format_expr(&hformat, &expr));
+                let Some(tokens) = arg_values.get(index) else {
+                    return compile_error(span, format!("unknown argument {index}"));
+                };
+                used[index] = true;
+                format_tokens.push(tokens.clone());
             }
         }
     }
-    if positional_parameters.next().is_some() {
-        return compile_error(
-            span,
-            "there are more arguments than positional parameters".into(),
-        );
+    if let Some(index) = used.iter().position(|used| !used) {
+        return compile_error(span, format!("argument {index} is never used"));
     }
 
-    quote::quote! {
-        {
-            #hformat::__hformat_internal!(#(#format_tokens),*)
-        }
-    }
+    quote::quote! {{
+        #(#runtime_bindings)*
+        #hformat::__hformat_internal!(#buf_tgt #(#format_tokens),*)
+    }}
     .into()
 }

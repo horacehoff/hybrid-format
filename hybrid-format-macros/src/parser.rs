@@ -79,7 +79,7 @@ pub fn parse_format_string(string: &str) -> Result<Vec<FormatPart>, String> {
                 chars.next();
                 current_text.push('}');
             }
-            '}' => return Err("unmatched `}` in format string, use `}}` to print `}`".into()),
+            '}' => return Err("invalid format string: unmatched `}` found".into()),
             '{' => {
                 if !current_text.is_empty() {
                     format_parts.push(FormatPart::Text(core::mem::take(&mut current_text)));
@@ -100,6 +100,8 @@ fn parse_formatting_argument(chars: &mut Peekable<Chars>) -> Result<FormatPart, 
     Ok(FormatPart::Placeholder {
         arg: if expr.is_empty() {
             Argument::NextPositional
+        } else if let Ok(idx) = expr.parse() {
+            Argument::Index(idx)
         } else {
             Argument::Expression(expr)
         },
@@ -136,7 +138,7 @@ fn parse_argument(chars: &mut Peekable<Chars>) -> Result<(String, bool), String>
         }
         expr.push(c);
     }
-    Err("unclosed `{` in format string, use `{{` to print `{`".into())
+    Err("invalid format string: expected `}` but string was terminated".into())
 }
 
 const fn parse_alignment(c: char) -> Option<Alignment> {

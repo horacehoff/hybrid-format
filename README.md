@@ -40,7 +40,7 @@ assert_eq!(
 
 assert_eq!(const { hformat!("{}", 42) }, format!("{}", 42));
 
-assert_eq!(const { hformat!("{42}") }, "42");
+assert_eq!(const { hformat!("{0}, {0}", 42) }, "42, 42");
 
 assert_eq!(
     const { hformat!("Float: {}", 4.2) },
@@ -170,7 +170,6 @@ pub trait HybridFormat {
 ## Limitations / Quirks
 - To type the character `{`, type `{{` (like the `format!()` macro)
 - To type the character `}`, type `}}` (like the `format!()` macro)
-- Currently, `{0}` means the expression `0`. Named arguments aren't supported yet.
 - Format specs aren't supported yet (they can only be parsed right now)
 - Whole-number floats keep a trailing `.0`, and very small/large values use scientific notation (like `4.2e+67`)
 
@@ -197,6 +196,6 @@ parameter := argument '$'
 | -------- | ------- | ------- | ------- |
 | `format!("Hello, world!")`  | 13.4ns | 311.2ps (just a &'static str) | 43x |
 | `all_dynamic` (`i32`, `f64`, `&str`) | 117ns | 36ns | 3.25x |
-| `ten_const_ten_dynamic` (`f64`, `i32`, `bool`, `&str`, `char`) | 446.8ns | 63.8ns | 7x |
+| `ten_const_ten_dynamic` (`f64`, `i32`, `bool`, `&str`, `char`) | 446.8ns | 55ns | 8.12x |
 
 Ad astra per aspera!
