@@ -6,7 +6,7 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.95.0"
 license = "Apache-2.0"
@@ -16,7 +16,7 @@ categories = ["no-std","value-formatting"]
 keywords = ["format", "formatting", "const", "no-std", "string"]
 
 [workspace.dependencies]
-hybrid-format-macros = { path = "hybrid-format-macros", version = "=0.1.0" }
+hybrid-format-macros = { path = "hybrid-format-macros", version = "=0.2.0" }
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
