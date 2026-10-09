@@ -163,7 +163,7 @@ fn parse_type(type_str: &str) -> Result<FormatType, String> {
         "b" => Ok(FormatType::Binary),
         "e" => Ok(FormatType::LowerExp),
         "E" => Ok(FormatType::UpperExp),
-        other => Err(format!("unknown format type `{other}`")),
+        other => Err(format!("unknown format trait `{other}`")),
     }
 }
 fn parse_quantity(chars: &mut Peekable<Chars>) -> Result<Option<Quantity>, String> {
@@ -247,6 +247,6 @@ fn parse_spec(chars: &mut Peekable<Chars>) -> Result<FormatSpec, String> {
             format_type,
         }),
         Some(unexpected) => Err(format!("unexpected `{unexpected}` in format spec")),
-        None => Err("unclosed `{` in format string, use `{{` to print `{`".into()),
+        None => Err("invalid format string: expected `}` but string was terminated".into()),
     }
 }

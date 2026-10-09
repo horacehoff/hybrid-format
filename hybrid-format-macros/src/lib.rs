@@ -3,7 +3,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
-use syn::{BinOp, Expr, Lit, LitStr, UnOp, parse_macro_input};
+use syn::{BinOp, Expr, Lit, LitStr, UnOp, ext::IdentExt, parse_macro_input};
 
 mod parser;
 
@@ -155,23 +155,23 @@ pub fn hformat(input: TokenStream) -> TokenStream {
     let mut arg_values = Vec::new();
     let mut runtime_bindings = Vec::new();
     for (i, arg) in args.into_iter().enumerate() {
-        let (name, value) = match arg {
-            Expr::Assign(assign) => {
-                let Expr::Path(path) = *assign.left else {
-                    return compile_error(span, "expected name = value".into());
-                };
-                let Some(name) = path.path.get_ident().cloned() else {
-                    return compile_error(span, "expected name = value".into());
-                };
-                (Some(name), *assign.right)
-            }
+        let name = if let Expr::Assign(assign) = &arg
+            && let Expr::Path(path) = assign.left.as_ref()
+            && let Some(ident) = path.path.get_ident()
+        {
+            Some(ident.unraw())
+        } else {
+            None
+        };
+        let value = match arg {
+            Expr::Assign(assign) if name.is_some() => *assign.right,
             _ if named_arguments.last().is_some_and(Option::is_some) => {
                 return compile_error(
                     span,
                     "positional arguments cannot follow named arguments".into(),
                 );
             }
-            val => (None, val),
+            val => val,
         };
         arg_values.push(if is_probably_const(&value) {
             format_expr(&hformat, &value)
@@ -229,8 +229,8 @@ pub fn hformat(input: TokenStream) -> TokenStream {
             }
         }
     }
-    if let Some(index) = used.iter().position(|used| !used) {
-        return compile_error(span, format!("argument {index} is never used"));
+    if used.iter().any(|used| !used) {
+        return compile_error(span, "argument never used".into());
     }
 
     quote::quote! {{

@@ -100,22 +100,22 @@ pub trait HybridFormat {
 /// ```
 /// use hybrid_format::hformat;
 ///
-/// assert_eq!(const { hformat!("{}", 42) }, format!("{}", 42));            // => "42"
+/// assert_eq!(const { hformat!("{}", 42) }, format!("{}", 42)); // => "42"
 ///
 /// const MY_INT: i32 = 42;
-/// assert_eq!(const { hformat!("{}", MY_INT) }, format!("{}", MY_INT));    // => "42"
+/// assert_eq!(const { hformat!("{}", MY_INT) }, format!("{}", MY_INT)); // => "42"
 ///
 /// let i = 2 + 2;
-/// assert_eq!(hformat!("{}", i), format!("{}", i));                        // => "4"
+/// assert_eq!(hformat!("{}", i), format!("{}", i)); // => "4"
 ///
 /// assert_eq!(
-///     const { hformat!("Float: {}", 4.2) },                               // => "Float: 4.2"
+///     const { hformat!("Float: {}", 4.2) }, // => "Float: 4.2"
 ///     format!("Float: {}", 4.2)
 /// );
 ///
 /// const MY_FLOAT: f64 = 4.2;
 /// assert_eq!(
-///     const { hformat!("Float: {}", MY_FLOAT) },                          // => "Float: 4.2"
+///     const { hformat!("Float: {f}", f = MY_FLOAT) }, // => "Float: 4.2"
 ///     format!("Float: {}", MY_FLOAT)
 /// );
 ///
