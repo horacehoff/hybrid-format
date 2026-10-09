@@ -136,7 +136,7 @@ macro_rules! hformat {
     }};
 }
 
-/// [`hformat!`] equivalent of the [`write!`] macro.
+/// [`hformat!`] equivalent of the [`write!`] macro. Appends to an existing `String` and reserves the exact capacity once.
 #[macro_export]
 macro_rules! hwrite {
     ($buf:expr, $($args: tt)*) => {{

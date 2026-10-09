@@ -6,6 +6,7 @@
 Rust 1.95+, `no_std` (runtime formatting needs an allocator)
 
 `hformat!` macro that formats a string like [`format!`](https://doc.rust-lang.org/std/macro.format.html), but faster.
+There is also `hwrite!`, the `hformat!` equivalent of the `write!` macro.
 
 Constant arguments (literals, `const` blocks, `SCREAMING_SNAKE_CASE` names) are formatted at compile time. If every argument is a constant, the macro outputs a `&'static str`, otherwise it outputs a `String` built with a single allocation.
 
