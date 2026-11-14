@@ -26,12 +26,14 @@ pub use const_args::ConstFormattedString;
 ///     fn size(&self) -> usize {
 ///         10
 ///     }
-///     unsafe fn append(&self, buf: &mut String) {
-///         buf.push('(');
-///         unsafe { self.x.append(buf) };
-///         buf.push_str(", ");
-///         unsafe { self.y.append(buf) };
-///         buf.push(')');
+///     unsafe fn append(&self, buf: *mut u8) -> *mut u8 {
+///         unsafe {
+///             let buf = '('.append(buf);
+///             let buf = self.x.append(buf);
+///             let buf = ", ".append(buf);
+///             let buf = self.y.append(buf);
+///             ')'.append(buf)
+///         }
 ///     }
 /// }
 /// impl HybridFormat for Point {
@@ -47,10 +49,10 @@ pub use const_args::ConstFormattedString;
 pub unsafe trait Formatted {
     /// The size of the object when formatted in bytes. Needs to be exact or at least an upper bound.
     fn size(&self) -> usize;
-    /// Appends the formatted object to `buf`.
+    /// Writes the formatted object to `buf` and returns the pointer past the last byte written.
     /// # Safety
-    /// This assumes `buf` still has at least [`Formatted::size()`] bytes of remaining capacity.
-    unsafe fn append(&self, buf: &mut alloc::string::String);
+    /// `buf` must be valid for [`Formatted::size()`] bytes of writes.
+    unsafe fn append(&self, buf: *mut u8) -> *mut u8;
 }
 
 /// Converts an argument into an intermediate representation (that can be borrowed) that implements [`Formatted`], that can then be formatted.
@@ -172,8 +174,8 @@ macro_rules! __hformat_internal {
             ]
             [$(
                 $add_to_str_statements)*
-                unsafe {$crate::__private::push_str_unchecked($buffer, _temp_formatted)};
-                unsafe {$crate::Formatted::append(&_dynamic_formatted, $buffer)};
+                $buffer = unsafe {$crate::__private::push_str_unchecked($buffer, _temp_formatted)};
+                $buffer = unsafe {$crate::Formatted::append(&_dynamic_formatted, $buffer)};
             ]
             $($($remaining)*)?
         )
@@ -195,25 +197,27 @@ macro_rules! __hformat_internal {
     // runtime/const hybrid
     ([$buffer:ident] [$($pending_static_elems: tt)*] [$($capacity_expr: tt)*] [$($add_to_str_statements: tt)*]) => {{
         let _temp_formatted: &str = $crate::__private::const_format::concatcp!($($pending_static_elems)*);
-        let mut $buffer = $crate::__private::String::with_capacity($($capacity_expr)* + _temp_formatted.len());
-        {
-            // shadowed just to give the statements a &mut String
-            let $buffer = &mut $buffer;
-            $($add_to_str_statements)*
-            unsafe {$crate::__private::push_str_unchecked($buffer, _temp_formatted)};
-        }
-        $buffer
+        let mut string = $crate::__private::String::with_capacity($($capacity_expr)* + _temp_formatted.len());
+        let mut $buffer = unsafe { string.as_mut_vec() }.as_mut_ptr();
+        $($add_to_str_statements)*
+        $buffer = unsafe { $crate::__private::push_str_unchecked($buffer, _temp_formatted) };
+        let len = unsafe { $buffer.offset_from_unsigned(string.as_ptr()) };
+        unsafe { string.as_mut_vec().set_len(len) }
+        string
     }};
     // hwrite! => appends to existing String
     ([$buffer:ident ($buf_tgt:expr)] [$($pending_static_elems: tt)*] [$($capacity_expr: tt)*] [$($add_to_str_statements: tt)*]) => {{
         let _temp_formatted: &str = $crate::__private::const_format::concatcp!($($pending_static_elems)*);
         use ::core::borrow::BorrowMut as _;
         match $buf_tgt.borrow_mut() {
-            $buffer => {
-                let $buffer: &mut $crate::__private::String = $buffer;
-                $buffer.reserve($($capacity_expr)* + _temp_formatted.len());
+            string => {
+                let string: &mut $crate::__private::String = string;
+                string.reserve($($capacity_expr)* + _temp_formatted.len());
+                let mut $buffer = unsafe { string.as_mut_vec().as_mut_ptr().add(string.len()) };
                 $($add_to_str_statements)*
-                unsafe {$crate::__private::push_str_unchecked($buffer, _temp_formatted)};
+                $buffer = unsafe {$crate::__private::push_str_unchecked($buffer, _temp_formatted)};
+                let len = unsafe { $buffer.offset_from_unsigned(string.as_ptr()) };
+                unsafe { string.as_mut_vec().set_len(len) }
             }
         }
     }};

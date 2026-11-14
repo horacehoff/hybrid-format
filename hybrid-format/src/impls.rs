@@ -7,17 +7,11 @@ use lexical_core::FormattedSize;
 /// Pushes `string` into `src` without checking capacity.
 /// # Safety
 /// Just make sure `src` has at least `string.len()` bytes of remaining capacity.
-pub unsafe fn push_str_unchecked(src: &mut String, string: &str) {
-    let len = src.len();
+pub const unsafe fn push_str_unchecked(dst: *mut u8, string: &str) -> *mut u8 {
     let string_len = string.len();
-    debug_assert!(string_len <= src.capacity() - len);
     unsafe {
-        core::ptr::copy_nonoverlapping(
-            string.as_ptr(),
-            src.as_mut_vec().as_mut_ptr().add(len),
-            string_len,
-        );
-        src.as_mut_vec().set_len(len + string_len);
+        core::ptr::copy_nonoverlapping(string.as_ptr(), dst, string_len);
+        dst.add(string_len)
     }
 }
 
@@ -27,7 +21,7 @@ unsafe impl Formatted for &str {
         self.len()
     }
     #[inline]
-    unsafe fn append(&self, buf: &mut String) {
+    unsafe fn append(&self, buf: *mut u8) -> *mut u8 {
         unsafe { push_str_unchecked(buf, self) }
     }
 }
@@ -71,21 +65,14 @@ unsafe impl Formatted for bool {
         8
     }
     #[inline]
-    unsafe fn append(&self, buf: &mut String) {
+    unsafe fn append(&self, buf: *mut u8) -> *mut u8 {
         unsafe {
-            let buf_vec = buf.as_mut_vec();
-            let buf_len = buf_vec.len();
-            debug_assert!(5 <= buf_vec.capacity() - buf_len);
-            buf_vec
-                .as_mut_ptr()
-                .add(buf_len)
-                .cast::<[u8; 8]>()
-                .write(if *self {
-                    *b"true\0\0\0\0"
-                } else {
-                    *b"false\0\0\0"
-                });
-            buf_vec.set_len(buf_len + 5 - usize::from(*self));
+            buf.cast::<[u8; 8]>().write(if *self {
+                *b"true\0\0\0\0"
+            } else {
+                *b"false\0\0\0"
+            });
+            buf.add(5 - usize::from(*self))
         }
     }
 }
@@ -116,18 +103,15 @@ unsafe impl Formatted for char {
         4
     }
     #[inline]
-    unsafe fn append(&self, buf: &mut String) {
-        let buf_len = buf.len();
-        debug_assert!(4 <= buf.capacity() - buf_len);
+    unsafe fn append(&self, buf: *mut u8) -> *mut u8 {
         unsafe {
-            let buf_ptr = buf.as_mut_vec().as_mut_ptr().add(buf_len);
             let char_len = if self.is_ascii() {
-                buf_ptr.write(*self as u8);
+                buf.write(*self as u8);
                 1
             } else {
-                write_char(buf_ptr, u32::from(*self))
+                write_char(buf, u32::from(*self))
             };
-            buf.as_mut_vec().set_len(buf_len + char_len);
+            buf.add(char_len)
         }
     }
 }
@@ -150,7 +134,7 @@ macro_rules! HybridFormatFloat {
                 24
             }
             #[inline]
-            unsafe fn append(&self, buf: &mut String) {
+            unsafe fn append(&self, buf: *mut u8) -> *mut u8 {
                 #[inline(never)]
                 // extern "C" removes the unwind cleanup code, it's the only way I found
                 unsafe extern "C" fn write_float(f: $t, buf: *mut u8) -> usize {
@@ -169,12 +153,7 @@ macro_rules! HybridFormatFloat {
                         len
                     }
                 }
-                let buf_len = buf.len();
-                debug_assert!(24 <= buf.capacity() - buf_len);
-                unsafe {
-                    let len = write_float(*self, buf.as_mut_vec().as_mut_ptr().add(buf_len));
-                    buf.as_mut_vec().set_len(buf_len + len);
-                }
+                unsafe { buf.add(write_float(*self, buf)) }
             }
         }
     )*
@@ -220,13 +199,8 @@ macro_rules! HybridFormatIntUnsigned {
                 <$t>::FORMATTED_SIZE_DECIMAL
             }
             #[inline]
-            unsafe fn append(&self, buf: &mut String) {
-                let buf_len = buf.len();
-                debug_assert!(<$t>::FORMATTED_SIZE_DECIMAL <= buf.capacity() - buf_len);
-                unsafe {
-                    let written_bytes = write_int(buf.as_mut_vec().as_mut_ptr().add(buf_len), *self);
-                    buf.as_mut_vec().set_len(buf_len + written_bytes);
-                }
+            unsafe fn append(&self, buf: *mut u8) -> *mut u8 {
+                unsafe { buf.add(write_int(buf, *self)) }
             }
         }
         impl HybridFormat for $t {
@@ -249,7 +223,7 @@ macro_rules! HybridFormatIntSigned {
                 const {<$u>::FORMATTED_SIZE_DECIMAL + 1}
             }
             #[inline]
-            unsafe fn append(&self, buf: &mut String) {
+            unsafe fn append(&self, buf: *mut u8) -> *mut u8 {
                 #[inline(never)]
                 unsafe extern "C" fn write_signed(buf: *mut u8, n: $t) -> usize {
                     unsafe {
@@ -259,12 +233,7 @@ macro_rules! HybridFormatIntSigned {
                         lexical_core::write(n.unsigned_abs(), core::slice::from_raw_parts_mut(buf.add(is_int_neg), <$u>::FORMATTED_SIZE_DECIMAL)).len() + is_int_neg
                     }
                 }
-                let buf_len = buf.len();
-                debug_assert!(<$u>::FORMATTED_SIZE_DECIMAL < buf.capacity() - buf_len);
-                unsafe {
-                    let written_bytes = write_signed(buf.as_mut_vec().as_mut_ptr().add(buf_len), *self);
-                    buf.as_mut_vec().set_len(buf_len + written_bytes);
-                }
+                unsafe { buf.add(write_signed(buf, *self)) }
             }
         }
         impl HybridFormat for $t {

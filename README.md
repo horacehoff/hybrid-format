@@ -152,10 +152,10 @@ To format your own types at runtime, use those two traits:
 pub unsafe trait Formatted {
     /// The size of the object when formatted in bytes. Needs to be exact or at least an upper bound.
     fn size(&self) -> usize;
-    /// Appends the formatted object to `buf`.
+    /// Writes the formatted object to `buf` and returns the pointer past the last byte written.
     /// # Safety
-    /// This assumes `buf` still has at least `size()` bytes of remaining capacity.
-    unsafe fn append(&self, buf: &mut String);
+    /// `buf` must be valid for [`Formatted::size()`] bytes of writes.
+    unsafe fn append(&self, buf: *mut u8) -> *mut u8;
 }
 
 /// Converts an argument into an intermediate representation (that can be borrowed) that implements `Formatted`, that can then be formatted.
