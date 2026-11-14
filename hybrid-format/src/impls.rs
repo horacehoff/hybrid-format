@@ -102,7 +102,7 @@ impl HybridFormat for bool {
 }
 #[inline(never)]
 // takes in a u32 because chars trigger a warning
-const unsafe extern "C" fn write_char(c: u32, buf: *mut u8) -> usize {
+const unsafe extern "C" fn write_char(buf: *mut u8, c: u32) -> usize {
     unsafe {
         char::from_u32_unchecked(c)
             .encode_utf8(core::slice::from_raw_parts_mut(buf, 4))
@@ -125,7 +125,7 @@ unsafe impl Formatted for char {
                 buf_ptr.write(*self as u8);
                 1
             } else {
-                write_char(u32::from(*self), buf_ptr)
+                write_char(buf_ptr, u32::from(*self))
             };
             buf.as_mut_vec().set_len(buf_len + char_len);
         }
@@ -205,7 +205,7 @@ impl HybridFormat for f32 {
 }
 
 #[inline(never)]
-unsafe fn write_int<N: lexical_core::ToLexical>(n: N, buf: *mut u8) -> usize {
+unsafe fn write_int<N: lexical_core::ToLexical>(buf: *mut u8, n: N) -> usize {
     lexical_core::write(n, unsafe {
         core::slice::from_raw_parts_mut(buf, N::FORMATTED_SIZE_DECIMAL)
     })
@@ -224,7 +224,7 @@ macro_rules! HybridFormatIntUnsigned {
                 let buf_len = buf.len();
                 debug_assert!(<$t>::FORMATTED_SIZE_DECIMAL <= buf.capacity() - buf_len);
                 unsafe {
-                    let written_bytes = write_int(*self, buf.as_mut_vec().as_mut_ptr().add(buf_len));
+                    let written_bytes = write_int(buf.as_mut_vec().as_mut_ptr().add(buf_len), *self);
                     buf.as_mut_vec().set_len(buf_len + written_bytes);
                 }
             }
@@ -250,15 +250,20 @@ macro_rules! HybridFormatIntSigned {
             }
             #[inline]
             unsafe fn append(&self, buf: &mut String) {
+                #[inline(never)]
+                unsafe extern "C" fn write_signed(buf: *mut u8, n: $t) -> usize {
+                    unsafe {
+                        // asm (on arm64) output shows that this is the smallest and fastest option
+                        buf.write(b'-');
+                        let is_int_neg = usize::from(n < 0);
+                        lexical_core::write(n.unsigned_abs(), core::slice::from_raw_parts_mut(buf.add(is_int_neg), <$u>::FORMATTED_SIZE_DECIMAL)).len() + is_int_neg
+                    }
+                }
                 let buf_len = buf.len();
                 debug_assert!(<$u>::FORMATTED_SIZE_DECIMAL < buf.capacity() - buf_len);
                 unsafe {
-                    // asm (on arm64) output shows that this is the smallest and fastest option
-                    let buf_ptr = buf.as_mut_vec().as_mut_ptr().add(buf_len);
-                    buf_ptr.write(b'-');
-                    let is_int_neg = usize::from(*self < 0);
-                    let written_bytes = write_int(self.unsigned_abs(), buf_ptr.add(is_int_neg));
-                    buf.as_mut_vec().set_len(buf_len + written_bytes + is_int_neg);
+                    let written_bytes = write_signed(buf.as_mut_vec().as_mut_ptr().add(buf_len), *self);
+                    buf.as_mut_vec().set_len(buf_len + written_bytes);
                 }
             }
         }
