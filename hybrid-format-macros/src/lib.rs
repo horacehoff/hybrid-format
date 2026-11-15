@@ -71,6 +71,20 @@ fn is_probably_const(expr: &Expr) -> bool {
         Expr::Cast(e) => is_probably_const(&e.expr),
         Expr::Field(f) => is_probably_const(&f.base),
         Expr::Index(e) => is_probably_const(&e.expr) && is_probably_const(&e.index),
+        Expr::If(e) => {
+            is_probably_const(&e.cond)
+                && matches!(e.then_branch.stmts.as_slice(), [syn::Stmt::Expr(last, None)] if is_probably_const(last))
+                && e.else_branch
+                    .as_ref()
+                    .is_some_and(|(_, expr)| is_probably_const(&expr))
+        }
+        Expr::Block(e) => {
+            matches!(e.block.stmts.as_slice(), [syn::Stmt::Expr(last, None)] if is_probably_const(last))
+        }
+        Expr::Array(syn::ExprArray { elems, .. }) | Expr::Tuple(syn::ExprTuple { elems, .. }) => {
+            elems.iter().all(is_probably_const)
+        }
+        Expr::Repeat(e) => is_probably_const(&e.expr),
         _ => false,
     }
 }
