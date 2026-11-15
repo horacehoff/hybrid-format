@@ -91,10 +91,7 @@ impl<const N: usize> ConstFormattedString<N> {
     #[must_use]
     #[inline]
     pub const fn new() -> Self {
-        Self {
-            buf: [0; N],
-            len: 0,
-        }
+        Self { buf: [0; N], len: 0 }
     }
     #[must_use]
     #[inline]
@@ -126,16 +123,8 @@ impl<const N: usize> ConstFormattedString<N> {
     pub const fn push_str(mut self, string: &str) -> Self {
         let bytes = string.as_bytes();
         let bytes_len = bytes.len();
-        assert!(
-            bytes_len <= N - self.len,
-            "Capacity exceeded when pushing &str"
-        );
-        self.buf
-            .split_at_mut(self.len)
-            .1
-            .split_at_mut(bytes_len)
-            .0
-            .copy_from_slice(bytes);
+        assert!(bytes_len <= N - self.len, "Capacity exceeded when pushing &str");
+        self.buf.split_at_mut(self.len).1.split_at_mut(bytes_len).0.copy_from_slice(bytes);
         self.len += bytes_len;
         self
     }

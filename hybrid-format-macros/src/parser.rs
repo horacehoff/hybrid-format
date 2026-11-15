@@ -105,11 +105,7 @@ fn parse_formatting_argument(chars: &mut Peekable<Chars>) -> Result<FormatPart, 
         } else {
             Argument::Expression(expr)
         },
-        spec: if has_spec {
-            parse_spec(chars)?
-        } else {
-            FormatSpec::default()
-        },
+        spec: if has_spec { parse_spec(chars)? } else { FormatSpec::default() },
     })
 }
 
@@ -169,21 +165,15 @@ fn parse_type(type_str: &str) -> Result<FormatType, String> {
 fn parse_quantity(chars: &mut Peekable<Chars>) -> Result<Option<Quantity>, String> {
     let mut chars_dup = chars.clone();
     let is_int = chars_dup.peek().is_some_and(char::is_ascii_digit);
-    let word: String = core::iter::from_fn(|| {
-        chars_dup.next_if(|&c| {
-            if is_int {
-                c.is_ascii_digit()
-            } else {
-                c.is_alphanumeric() || c == '_'
-            }
+    let word: String =
+        core::iter::from_fn(|| {
+            chars_dup.next_if(|&c| {
+                if is_int { c.is_ascii_digit() } else { c.is_alphanumeric() || c == '_' }
+            })
         })
-    })
-    .collect();
+        .collect();
     let is_parameter = chars_dup.next_if_eq(&'$').is_some();
-    let int = || {
-        word.parse::<usize>()
-            .map_err(|_| format!("`{word}` is not a valid `usize`"))
-    };
+    let int = || word.parse::<usize>().map_err(|_| format!("`{word}` is not a valid `usize`"));
     let quantity = match (is_int, is_parameter) {
         (true, true) => Quantity::Parameter(Argument::Index(int()?)),
         (true, false) => Quantity::Int(int()?),

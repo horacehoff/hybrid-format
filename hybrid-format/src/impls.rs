@@ -91,9 +91,8 @@ impl HybridFormat for bool {
 // takes in a u32 because chars trigger a warning
 const unsafe extern "C" fn write_char(buf: *mut u8, c: u32) -> *mut u8 {
     unsafe {
-        let len = char::from_u32_unchecked(c)
-            .encode_utf8(core::slice::from_raw_parts_mut(buf, 4))
-            .len();
+        let len =
+            char::from_u32_unchecked(c).encode_utf8(core::slice::from_raw_parts_mut(buf, 4)).len();
         buf.add(len)
     }
 }
@@ -189,11 +188,8 @@ impl HybridFormat for f32 {
 unsafe extern "C" fn write_int<N: lexical_core::ToLexical>(buf: *mut u8, n: N) -> *mut u8 {
     unsafe {
         buf.add(
-            lexical_core::write(
-                n,
-                core::slice::from_raw_parts_mut(buf, N::FORMATTED_SIZE_DECIMAL),
-            )
-            .len(),
+            lexical_core::write(n, core::slice::from_raw_parts_mut(buf, N::FORMATTED_SIZE_DECIMAL))
+                .len(),
         )
     }
 }

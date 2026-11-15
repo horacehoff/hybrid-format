@@ -74,17 +74,152 @@ fn is_probably_const(expr: &Expr) -> bool {
         Expr::If(e) => {
             is_probably_const(&e.cond)
                 && matches!(e.then_branch.stmts.as_slice(), [syn::Stmt::Expr(last, None)] if is_probably_const(last))
-                && e.else_branch
-                    .as_ref()
-                    .is_some_and(|(_, expr)| is_probably_const(&expr))
+                && e.else_branch.as_ref().is_some_and(|(_, expr)| is_probably_const(&expr))
         }
-        Expr::Block(e) => {
-            matches!(e.block.stmts.as_slice(), [syn::Stmt::Expr(last, None)] if is_probably_const(last))
+        Expr::Block(syn::ExprBlock { block, .. }) | Expr::Unsafe(syn::ExprUnsafe { block, .. }) => {
+            matches!(block.stmts.as_slice(), [syn::Stmt::Expr(last, None)] if is_probably_const(last))
         }
         Expr::Array(syn::ExprArray { elems, .. }) | Expr::Tuple(syn::ExprTuple { elems, .. }) => {
             elems.iter().all(is_probably_const)
         }
         Expr::Repeat(e) => is_probably_const(&e.expr),
+        Expr::MethodCall(e) => {
+            is_probably_const(&e.receiver)
+                && e.args.iter().all(is_probably_const)
+                && matches!(
+                    e.method.to_string().as_str(),
+                    // const methods from i32 (includes nightly ones just in case)
+                    "count_ones"
+                        | "count_zeros"
+                        | "leading_zeros"
+                        | "trailing_zeros"
+                        | "leading_ones"
+                        | "trailing_ones"
+                        | "isolate_highest_one"
+                        | "isolate_lowest_one"
+                        | "highest_one"
+                        | "lowest_one"
+                        | "cast_unsigned"
+                        | "rotate_left"
+                        | "rotate_right"
+                        | "swap_bytes"
+                        | "reverse_bits"
+                        | "to_be"
+                        | "to_le"
+                        | "checked_add"
+                        | "strict_add"
+                        | "unchecked_add"
+                        | "checked_add_unsigned"
+                        | "strict_add_unsigned"
+                        | "checked_sub"
+                        | "strict_sub"
+                        | "unchecked_sub"
+                        | "checked_sub_unsigned"
+                        | "strict_sub_unsigned"
+                        | "checked_mul"
+                        | "strict_mul"
+                        | "unchecked_mul"
+                        | "checked_div"
+                        | "strict_div"
+                        | "checked_div_euclid"
+                        | "strict_div_euclid"
+                        | "checked_div_exact"
+                        | "div_exact"
+                        | "unchecked_div_exact"
+                        | "checked_rem"
+                        | "strict_rem"
+                        | "checked_rem_euclid"
+                        | "strict_rem_euclid"
+                        | "checked_neg"
+                        | "unchecked_neg"
+                        | "strict_neg"
+                        | "checked_shl"
+                        | "strict_shl"
+                        | "unchecked_shl"
+                        | "unbounded_shl"
+                        | "shl_exact"
+                        | "unchecked_shl_exact"
+                        | "checked_shr"
+                        | "strict_shr"
+                        | "unchecked_shr"
+                        | "unbounded_shr"
+                        | "shr_exact"
+                        | "unchecked_shr_exact"
+                        | "checked_abs"
+                        | "strict_abs"
+                        | "checked_pow"
+                        | "strict_pow"
+                        | "checked_isqrt"
+                        | "saturating_add"
+                        | "saturating_add_unsigned"
+                        | "saturating_sub"
+                        | "saturating_sub_unsigned"
+                        | "saturating_neg"
+                        | "saturating_abs"
+                        | "saturating_mul"
+                        | "saturating_div"
+                        | "saturating_pow"
+                        | "wrapping_add"
+                        | "wrapping_add_unsigned"
+                        | "wrapping_sub"
+                        | "wrapping_sub_unsigned"
+                        | "wrapping_mul"
+                        | "wrapping_div"
+                        | "wrapping_div_euclid"
+                        | "wrapping_rem"
+                        | "wrapping_rem_euclid"
+                        | "wrapping_neg"
+                        | "wrapping_shl"
+                        | "wrapping_shr"
+                        | "wrapping_abs"
+                        | "unsigned_abs"
+                        | "wrapping_pow"
+                        | "overflowing_add"
+                        | "carrying_add"
+                        | "overflowing_add_unsigned"
+                        | "overflowing_sub"
+                        | "borrowing_sub"
+                        | "overflowing_sub_unsigned"
+                        | "overflowing_mul"
+                        | "widening_mul"
+                        | "carrying_mul"
+                        | "carrying_mul_add"
+                        | "overflowing_div"
+                        | "overflowing_div_euclid"
+                        | "overflowing_rem"
+                        | "overflowing_rem_euclid"
+                        | "overflowing_neg"
+                        | "overflowing_shl"
+                        | "overflowing_shr"
+                        | "overflowing_abs"
+                        | "overflowing_pow"
+                        | "pow"
+                        | "isqrt"
+                        | "div_floor"
+                        | "div_ceil"
+                        | "next_multiple_of"
+                        | "checked_next_multiple_of"
+                        | "ilog"
+                        | "ilog2"
+                        | "ilog10"
+                        | "checked_ilog"
+                        | "checked_ilog2"
+                        | "checked_ilog10"
+                        | "abs"
+                        | "abs_diff"
+                        | "signum"
+                        | "is_positive"
+                        | "is_negative"
+                        | "to_be_bytes"
+                        | "to_le_bytes"
+                        | "to_ne_bytes"
+                        | "midpoint"
+
+                        // other stuff
+                        | "is_some"
+                        | "is_none"
+                )
+        }
         _ => false,
     }
 }
@@ -110,10 +245,8 @@ fn get_literal_type(expr: &Expr) -> Option<proc_macro2::TokenStream> {
 
 fn format_expr(hformat: &proc_macro2::TokenStream, expr: &Expr) -> proc_macro2::TokenStream {
     if is_probably_const(expr) {
-        let expr = get_literal_type(expr).map_or_else(
-            || quote!(#expr),
-            |literal_type| quote!((#expr) as #literal_type),
-        );
+        let expr = get_literal_type(expr)
+            .map_or_else(|| quote!(#expr), |literal_type| quote!((#expr) as #literal_type));
         quote!(const {#hformat::__private::HybridFormatConstArg(#expr).format_const()}.as_const_arg())
     } else {
         quote! ({#expr})
@@ -122,11 +255,7 @@ fn format_expr(hformat: &proc_macro2::TokenStream, expr: &Expr) -> proc_macro2::
 
 impl syn::parse::Parse for HFormatInput {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let buf_tgt = if input.peek(syn::token::Paren) {
-            Some(input.parse()?)
-        } else {
-            None
-        };
+        let buf_tgt = if input.peek(syn::token::Paren) { Some(input.parse()?) } else { None };
         let format_str = input.parse()?;
 
         let args = if input.parse::<Option<syn::Token![,]>>()?.is_some() {
@@ -135,11 +264,7 @@ impl syn::parse::Parse for HFormatInput {
             syn::punctuated::Punctuated::new()
         };
 
-        Ok(Self {
-            buf_tgt,
-            format_str,
-            args,
-        })
+        Ok(Self { buf_tgt, format_str, args })
     }
 }
 
@@ -152,11 +277,7 @@ fn compile_error(span: Span, message: String) -> TokenStream {
 #[proc_macro]
 #[inline]
 pub fn hformat(input: TokenStream) -> TokenStream {
-    let HFormatInput {
-        buf_tgt,
-        format_str,
-        args,
-    } = parse_macro_input!(input as HFormatInput);
+    let HFormatInput { buf_tgt, format_str, args } = parse_macro_input!(input as HFormatInput);
     let hformat = quote!(__hitchhikers_guide_to_hybrid_format);
     let span = format_str.span();
 
