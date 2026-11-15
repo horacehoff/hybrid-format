@@ -18,7 +18,9 @@ pub const unsafe fn push_str_unchecked(dst: *mut u8, string: &str) -> *mut u8 {
 unsafe impl Formatted for &str {
     #[inline(always)]
     fn size(&self) -> usize {
-        self.len()
+        let len = self.len();
+        unsafe { core::hint::assert_unchecked(len <= isize::MAX.cast_unsigned()) }; // drops the zero-capacity and overflow branches (in only two cases)
+        len
     }
     #[inline]
     unsafe fn append(&self, buf: *mut u8) -> *mut u8 {
@@ -66,13 +68,11 @@ unsafe impl Formatted for bool {
     }
     #[inline]
     unsafe fn append(&self, buf: *mut u8) -> *mut u8 {
+        static BOOL_STR: [[u8; 8]; 2] = [*b"false\0\0\0", *b"true\0\0\0\0"];
         unsafe {
-            buf.cast::<[u8; 8]>().write(if *self {
-                *b"true\0\0\0\0"
-            } else {
-                *b"false\0\0\0"
-            });
-            buf.add(5 - usize::from(*self))
+            let bool_value = usize::from(*self);
+            buf.cast::<[u8; 8]>().write(BOOL_STR[bool_value]);
+            buf.add(5 - bool_value)
         }
     }
 }
@@ -89,11 +89,12 @@ impl HybridFormat for bool {
 }
 #[inline(never)]
 // takes in a u32 because chars trigger a warning
-const unsafe extern "C" fn write_char(buf: *mut u8, c: u32) -> usize {
+const unsafe extern "C" fn write_char(buf: *mut u8, c: u32) -> *mut u8 {
     unsafe {
-        char::from_u32_unchecked(c)
+        let len = char::from_u32_unchecked(c)
             .encode_utf8(core::slice::from_raw_parts_mut(buf, 4))
-            .len()
+            .len();
+        buf.add(len)
     }
 }
 unsafe impl Formatted for char {
@@ -105,13 +106,12 @@ unsafe impl Formatted for char {
     #[inline]
     unsafe fn append(&self, buf: *mut u8) -> *mut u8 {
         unsafe {
-            let char_len = if self.is_ascii() {
+            if self.is_ascii() {
                 buf.write(*self as u8);
-                1
+                buf.add(1)
             } else {
                 write_char(buf, u32::from(*self))
-            };
-            buf.add(char_len)
+            }
         }
     }
 }
@@ -137,23 +137,25 @@ macro_rules! HybridFormatFloat {
             unsafe fn append(&self, buf: *mut u8) -> *mut u8 {
                 #[inline(never)]
                 // extern "C" removes the unwind cleanup code, it's the only way I found
-                unsafe extern "C" fn write_float(f: $t, buf: *mut u8) -> usize {
+                unsafe extern "C" fn write_float(f: $t, buf: *mut u8) -> *mut u8 {
                     if f.is_finite() {
-                        unsafe {(*buf.cast::<zmij::Buffer>()).format_finite(f).len()}
+                        unsafe { buf.add((*buf.cast::<zmij::Buffer>()).format_finite(f).len()) }
                     } else {
                         core::hint::cold_path();
                         let (bytes, len) = if f.is_nan() {
                             (*b"NaN\0",3)
-                        } else if f.is_sign_negative() {
-                            (*b"-inf",4)
-                        } else {
+                        } else if f.is_sign_positive() {
                             (*b"inf\0",3)
+                        } else {
+                            (*b"-inf",4)
                         };
-                        unsafe {buf.cast::<[u8;4]>().write(bytes)};
-                        len
+                        unsafe {
+                            buf.cast::<[u8;4]>().write(bytes);
+                            buf.add(len)
+                        }
                     }
                 }
-                unsafe { buf.add(write_float(*self, buf)) }
+                unsafe { write_float(*self, buf) }
             }
         }
     )*
@@ -184,11 +186,16 @@ impl HybridFormat for f32 {
 }
 
 #[inline(never)]
-unsafe fn write_int<N: lexical_core::ToLexical>(buf: *mut u8, n: N) -> usize {
-    lexical_core::write(n, unsafe {
-        core::slice::from_raw_parts_mut(buf, N::FORMATTED_SIZE_DECIMAL)
-    })
-    .len()
+unsafe extern "C" fn write_int<N: lexical_core::ToLexical>(buf: *mut u8, n: N) -> *mut u8 {
+    unsafe {
+        buf.add(
+            lexical_core::write(
+                n,
+                core::slice::from_raw_parts_mut(buf, N::FORMATTED_SIZE_DECIMAL),
+            )
+            .len(),
+        )
+    }
 }
 
 macro_rules! HybridFormatIntUnsigned {
@@ -200,7 +207,7 @@ macro_rules! HybridFormatIntUnsigned {
             }
             #[inline]
             unsafe fn append(&self, buf: *mut u8) -> *mut u8 {
-                unsafe { buf.add(write_int(buf, *self)) }
+                unsafe { write_int(buf, *self) }
             }
         }
         impl HybridFormat for $t {
@@ -225,15 +232,17 @@ macro_rules! HybridFormatIntSigned {
             #[inline]
             unsafe fn append(&self, buf: *mut u8) -> *mut u8 {
                 #[inline(never)]
-                unsafe extern "C" fn write_signed(buf: *mut u8, n: $t) -> usize {
+                unsafe extern "C" fn write_signed(buf: *mut u8, n: $t) -> *mut u8 {
                     unsafe {
                         // asm (on arm64) output shows that this is the smallest and fastest option
                         buf.write(b'-');
-                        let is_int_neg = usize::from(n < 0);
-                        lexical_core::write(n.unsigned_abs(), core::slice::from_raw_parts_mut(buf.add(is_int_neg), <$u>::FORMATTED_SIZE_DECIMAL)).len() + is_int_neg
+                        let int_start = buf.add(usize::from(n < 0));
+                        int_start.add(
+                            lexical_core::write(n.unsigned_abs(), core::slice::from_raw_parts_mut(int_start, <$u>::FORMATTED_SIZE_DECIMAL)).len()
+                        )
                     }
                 }
-                unsafe { buf.add(write_signed(buf, *self)) }
+                unsafe { write_signed(buf, *self) }
             }
         }
         impl HybridFormat for $t {
