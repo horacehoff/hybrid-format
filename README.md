@@ -10,7 +10,7 @@ There is also `hwrite!`, the `hformat!` equivalent of the `write!` macro.
 
 Constant arguments (literals, `const` blocks, `SCREAMING_SNAKE_CASE` names, constant macros like `env!`, `concat!`, and any expressions built only from those with arithmetic, bitwise/logical operators, casts, field access, or indexing where all operands are constant) are formatted at compile time. If every argument is a constant, the macro outputs a `&'static str`, otherwise it outputs a `String` built with a single allocation.
 
-Format specs (fill, align, precision, ...) aren't supported yet.
+Format specs (fill, align, precision, ...) are in the process of being implemented.
 
 You can essentially type any expression inside `{}`, it doesn't require an inner block.
 

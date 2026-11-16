@@ -1,5 +1,6 @@
 //! Use the `hybrid-format` crate.
 
+use crate::parser::Alignment;
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
@@ -284,13 +285,31 @@ fn get_literal_type(expr: &Expr) -> Option<proc_macro2::TokenStream> {
     }
 }
 
-fn format_expr(hformat: &proc_macro2::TokenStream, expr: &Expr) -> proc_macro2::TokenStream {
-    if is_probably_const(expr) {
+fn format_expr(
+    hformat: &proc_macro2::TokenStream,
+    expr: &Expr,
+    (width, fill, alignment): (usize, char, Option<Alignment>),
+) -> proc_macro2::TokenStream {
+    if width == 0 && is_probably_const(expr) {
         let expr = get_literal_type(expr)
             .map_or_else(|| quote!(#expr), |literal_type| quote!((#expr) as #literal_type));
         quote!(const {#hformat::__private::HybridFormatConstArg(#expr).format_const()}.as_const_arg())
-    } else {
+    } else if width == 0 {
         quote! ({#expr})
+    } else {
+        let alignment = match alignment {
+            None => quote!(::core::option::Option::None),
+            Some(Alignment::Left) => {
+                quote!(::core::option::Option::Some(#hformat::Alignment::Left))
+            }
+            Some(Alignment::Center) => {
+                quote!(::core::option::Option::Some(#hformat::Alignment::Center))
+            }
+            Some(Alignment::Right) => {
+                quote!(::core::option::Option::Some(#hformat::Alignment::Right))
+            }
+        };
+        quote!({#hformat::__private::Padded { value: &(#expr), width: #width, fill: #fill, alignment: #alignment }})
     }
 }
 
@@ -350,12 +369,12 @@ pub fn hformat(input: TokenStream) -> TokenStream {
             val => val,
         };
         arg_values.push(if is_probably_const(&value) {
-            format_expr(&hformat, &value)
+            value
         } else {
             let arg_binding =
                 quote::format_ident!("__hybrid_format_arg{}", i, span = Span::mixed_site());
             runtime_bindings.push(quote!(let #arg_binding = &(#value);));
-            quote!({#arg_binding})
+            syn::parse_quote!(#arg_binding)
         });
         named_arguments.push(name);
     }
@@ -367,9 +386,9 @@ pub fn hformat(input: TokenStream) -> TokenStream {
         match part {
             parser::FormatPart::Text(text) => format_tokens.push(quote!(#text)),
             parser::FormatPart::Placeholder { arg, spec } => {
-                if spec != parser::FormatSpec::default() {
-                    return compile_error(span, "format specs are not supported yet".into());
-                }
+                let Some(padding) = spec.get_padding() else {
+                    return compile_error(span, "this format spec isn't supported yet".into());
+                };
                 let index = match arg {
                     parser::Argument::NextPositional => {
                         let curr_idx = next_positional;
@@ -385,7 +404,9 @@ pub fn hformat(input: TokenStream) -> TokenStream {
                             idx
                         } else {
                             match LitStr::new(&e, span).parse::<Expr>() {
-                                Ok(expr) => format_tokens.push(format_expr(&hformat, &expr)),
+                                Ok(expr) => {
+                                    format_tokens.push(format_expr(&hformat, &expr, padding));
+                                }
                                 Err(err) => {
                                     return compile_error(
                                         span,
@@ -401,7 +422,7 @@ pub fn hformat(input: TokenStream) -> TokenStream {
                     return compile_error(span, format!("unknown argument {index}"));
                 };
                 used[index] = true;
-                format_tokens.push(tokens.clone());
+                format_tokens.push(format_expr(&hformat, tokens, padding));
             }
         }
     }

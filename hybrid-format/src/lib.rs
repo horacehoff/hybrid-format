@@ -7,6 +7,13 @@ mod impls;
 
 pub use const_args::ConstFormattedString;
 
+#[derive(Clone, Copy)]
+pub enum Alignment {
+    Left = 0,
+    Center = 1,
+    Right = 2,
+}
+
 /// A not-yet-formatted value, that knows its formatted size, and can format(write) itself into a buffer without any reallocations.
 ///
 /// # Safety
@@ -47,6 +54,8 @@ pub use const_args::ConstFormattedString;
 /// assert_eq!(hformat!("p = {p}"), "p = (42, 67)")
 /// ```
 pub unsafe trait Formatted {
+    /// The default alignment. This is overwritten by integers and floats.
+    const DEFAULT_ALIGNMENT: Alignment = Alignment::Left;
     /// The size of the object when formatted in bytes. Needs to be exact or at least an upper bound.
     fn size(&self) -> usize;
     /// Writes the formatted object to `buf` and returns the pointer past the last byte written.
@@ -150,7 +159,7 @@ macro_rules! hwrite {
 #[doc(hidden)]
 pub mod __private {
     pub use crate::const_args::HybridFormatConstArg;
-    pub use crate::impls::push_str_unchecked;
+    pub use crate::impls::{Padded, push_str_unchecked};
     pub use alloc::string::String;
     pub use const_format;
     pub use hybrid_format_macros::hformat;

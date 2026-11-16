@@ -158,3 +158,7 @@ fn custom_compiletime_type_hwrite() {
     hwrite!(buffer, "#{id} - {RANDOM_GUY_STR}");
     assert_eq!(buffer, "#0 - Doe, John | Age: 40 | $32.0");
 }
+#[test]
+fn runtime_fill_align_width() {
+    assert_eq!(hformat!("Hello {:-<5}!", "x"), format!("Hello {:-<5}!", "x"));
+}

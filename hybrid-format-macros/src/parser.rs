@@ -8,7 +8,7 @@ pub enum Argument {
 }
 
 #[derive(PartialEq, Eq)]
-enum Alignment {
+pub enum Alignment {
     Left,
     Center,
     Right,
@@ -58,6 +58,23 @@ pub struct FormatSpec {
     width: Option<Quantity>,
     precision: Option<Precision>,
     format_type: FormatType,
+}
+
+impl FormatSpec {
+    pub fn get_padding(self) -> Option<(usize, char, Option<Alignment>)> {
+        // Only a limited subset of the format spec is supported right now
+        let width = match self.width {
+            None => 0,
+            Some(Quantity::Int(width)) => width,
+            Some(Quantity::Parameter(_)) => return None,
+        };
+        (self.sign.is_none()
+            && !self.alternate_form
+            && !self.zero_padding
+            && self.precision.is_none()
+            && self.format_type == FormatType::Display)
+            .then_some((width, self.fill.unwrap_or(' '), self.align))
+    }
 }
 
 pub enum FormatPart {

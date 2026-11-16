@@ -1,7 +1,93 @@
+use crate::Alignment;
 use crate::Formatted;
 use crate::HybridFormat;
 use alloc::string::String;
 use lexical_core::FormattedSize;
+
+#[doc(hidden)]
+pub struct Padded<T> {
+    pub value: T,
+    pub width: usize,
+    pub fill: char,
+    pub alignment: Option<Alignment>,
+}
+
+impl<T: HybridFormat> HybridFormat for Padded<T> {
+    type Formatted<'a>
+        = Padded<T::Formatted<'a>>
+    where
+        Self: 'a;
+    #[inline(always)]
+    fn format(&self) -> Self::Formatted<'_> {
+        Padded {
+            value: self.value.format(),
+            width: self.width,
+            fill: self.fill,
+            alignment: self.alignment,
+        }
+    }
+}
+
+unsafe impl<T: Formatted> Formatted for Padded<T> {
+    #[inline(always)]
+    fn size(&self) -> usize {
+        self.value.size() + (self.width * self.fill.len_utf8())
+    }
+    #[inline(always)]
+    unsafe fn append(&self, buf: *mut u8) -> *mut u8 {
+        unsafe {
+            format_padding(
+                buf,
+                self.value.append(buf),
+                self.width,
+                self.fill,
+                self.alignment.unwrap_or(T::DEFAULT_ALIGNMENT),
+            )
+        }
+    }
+}
+
+#[inline(never)]
+unsafe fn format_padding(
+    value_start: *mut u8,
+    value_end: *mut u8,
+    width: usize,
+    fill_char: char,
+    alignment: Alignment,
+) -> *mut u8 {
+    unsafe {
+        let value_len = str::from_utf8_unchecked(core::slice::from_raw_parts(
+            value_start,
+            value_end.offset_from_unsigned(value_start),
+        ))
+        .chars()
+        .count();
+        let pad = width.saturating_sub(value_len);
+        let fill_char_len = fill_char.len_utf8();
+        let padded_end = if fill_char.is_ascii() {
+            value_end.write_bytes(fill_char as u8, pad);
+            value_end.add(pad)
+        } else {
+            let mut fill = [0u8; 4];
+            fill_char.encode_utf8(&mut fill);
+            (0..pad).fold(value_end, |dst, _| {
+                dst.cast::<[u8; 4]>().write(fill);
+                dst.add(fill_char_len)
+            })
+        };
+        // Moves all(right)/half(center) of the padding chars to the start (left alignment doesn't do anything)
+        core::slice::from_raw_parts_mut(value_start, padded_end.offset_from_unsigned(value_start))
+            .rotate_right(
+                fill_char_len
+                    * match alignment {
+                        Alignment::Left => 0,
+                        Alignment::Center => pad / 2,
+                        Alignment::Right => pad,
+                    },
+            );
+        padded_end
+    }
+}
 
 #[inline]
 /// Pushes `string` into `src` without checking capacity.
@@ -128,6 +214,7 @@ impl HybridFormat for char {
 macro_rules! HybridFormatFloat {
     ($($t: ty )*) => {$(
         unsafe impl Formatted for $t {
+            const DEFAULT_ALIGNMENT: Alignment = Alignment::Right;
             #[inline(always)]
             fn size(&self) -> usize {
                 24
@@ -157,32 +244,21 @@ macro_rules! HybridFormatFloat {
                 unsafe { write_float(*self, buf) }
             }
         }
+        impl HybridFormat for $t {
+            type Formatted<'a>
+                = Self
+            where
+                Self: 'a;
+            #[inline(always)]
+            fn format(&self) -> Self::Formatted<'_> {
+                *self
+            }
+        }
     )*
     };
 }
 
 HybridFormatFloat!(f32 f64);
-
-impl HybridFormat for f64 {
-    type Formatted<'a>
-        = Self
-    where
-        Self: 'a;
-    #[inline(always)]
-    fn format(&self) -> Self::Formatted<'_> {
-        *self
-    }
-}
-impl HybridFormat for f32 {
-    type Formatted<'a>
-        = Self
-    where
-        Self: 'a;
-    #[inline(always)]
-    fn format(&self) -> Self::Formatted<'_> {
-        *self
-    }
-}
 
 #[inline(never)]
 unsafe extern "C" fn write_int<N: lexical_core::ToLexical>(buf: *mut u8, n: N) -> *mut u8 {
@@ -197,6 +273,7 @@ unsafe extern "C" fn write_int<N: lexical_core::ToLexical>(buf: *mut u8, n: N) -
 macro_rules! HybridFormatIntUnsigned {
     ($($t: ty )*) => {$(
         unsafe impl Formatted for $t {
+            const DEFAULT_ALIGNMENT: Alignment = Alignment::Right;
             #[inline(always)]
             fn size(&self) -> usize {
                 <$t>::FORMATTED_SIZE_DECIMAL
@@ -220,6 +297,7 @@ macro_rules! HybridFormatIntUnsigned {
 macro_rules! HybridFormatIntSigned {
     ($({$t:ty, $u:ty})*) => {$(
         unsafe impl Formatted for $t {
+            const DEFAULT_ALIGNMENT: Alignment = Alignment::Right;
             #[inline(always)]
             fn size(&self) -> usize {
                 // fixes some sizes
