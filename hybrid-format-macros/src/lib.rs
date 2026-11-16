@@ -290,25 +290,30 @@ fn format_expr(
     expr: &Expr,
     (width, fill, alignment): (usize, char, Option<Alignment>),
 ) -> proc_macro2::TokenStream {
-    if width == 0 && is_probably_const(expr) {
+    let alignment = alignment.map(|alignment| match alignment {
+        Alignment::Left => quote!(#hformat::Alignment::Left),
+        Alignment::Center => quote!(#hformat::Alignment::Center),
+        Alignment::Right => quote!(#hformat::Alignment::Right),
+    });
+    if is_probably_const(expr) {
         let expr = get_literal_type(expr)
             .map_or_else(|| quote!(#expr), |literal_type| quote!((#expr) as #literal_type));
-        quote!(const {#hformat::__private::HybridFormatConstArg(#expr).format_const()}.as_const_arg())
+        let value = quote!(const {#hformat::__private::HybridFormatConstArg(#expr).format_const()}.as_const_arg());
+        if width == 0 {
+            return value;
+        }
+        let alignment =
+            alignment.unwrap_or_else(|| quote!(#hformat::__private::default_alignment(&(#expr))));
+        let fill_chars = fill.to_string().repeat(width);
+        let const_padding = quote!(#hformat::__private::const_format_padding(#fill_chars, #width, #hformat::__private::const_format::concatcp!((#value)), #alignment));
+        quote!(const {#const_padding.0}, #value, const {#const_padding.1})
     } else if width == 0 {
         quote! ({#expr})
     } else {
-        let alignment = match alignment {
-            None => quote!(::core::option::Option::None),
-            Some(Alignment::Left) => {
-                quote!(::core::option::Option::Some(#hformat::Alignment::Left))
-            }
-            Some(Alignment::Center) => {
-                quote!(::core::option::Option::Some(#hformat::Alignment::Center))
-            }
-            Some(Alignment::Right) => {
-                quote!(::core::option::Option::Some(#hformat::Alignment::Right))
-            }
-        };
+        let alignment = alignment.map_or_else(
+            || quote!(::core::option::Option::None),
+            |alignment| quote!(::core::option::Option::Some(#alignment)),
+        );
         quote!({#hformat::__private::Padded { value: &(#expr), width: #width, fill: #fill, alignment: #alignment }})
     }
 }

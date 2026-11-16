@@ -158,7 +158,7 @@ macro_rules! hwrite {
 
 #[doc(hidden)]
 pub mod __private {
-    pub use crate::const_args::HybridFormatConstArg;
+    pub use crate::const_args::{HybridFormatConstArg, const_format_padding, default_alignment};
     pub use crate::impls::{Padded, push_str_unchecked};
     pub use alloc::string::String;
     pub use const_format;

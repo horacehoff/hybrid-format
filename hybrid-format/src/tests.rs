@@ -162,3 +162,7 @@ fn custom_compiletime_type_hwrite() {
 fn runtime_fill_align_width() {
     assert_eq!(hformat!("Hello {:-<5}!", "x"), format!("Hello {:-<5}!", "x"));
 }
+#[test]
+fn const_fill_align_width() {
+    assert_eq!(const { hformat!("Hello {:-<5}!", "x") }, format!("Hello {:-<5}!", "x"));
+}

@@ -1,3 +1,5 @@
+use crate::{Alignment, Formatted, HybridFormat};
+
 /// The compile-time counterpart of the `HybridFormat` trait, used by `hformat!` for constant arguments.
 ///
 /// It's a struct because const traits aren't stable yet.
@@ -60,6 +62,53 @@ pub struct HybridFormatConstArg<T>(pub T);
 pub struct ConstFormattedString<const N: usize> {
     buf: [u8; N],
     len: usize,
+}
+
+impl<const N: usize> HybridFormat for ConstFormattedString<N> {
+    type Formatted<'a>
+        = &'a str
+    where
+        Self: 'a;
+
+    #[inline(always)]
+    fn format(&self) -> Self::Formatted<'_> {
+        self.as_str()
+    }
+}
+
+#[doc(hidden)]
+#[must_use]
+#[inline(always)]
+pub const fn default_alignment<T: HybridFormat>(_: &'static T) -> Alignment {
+    <T::Formatted<'static>>::DEFAULT_ALIGNMENT
+}
+
+#[doc(hidden)]
+#[must_use]
+pub const fn const_format_padding(
+    fill_chars: &'static str,
+    width: usize,
+    value: &str,
+    alignment: Alignment,
+) -> (&'static str, &'static str) {
+    let mut padding = width;
+    let mut i = 0;
+    while i < value.len() {
+        // basically .chars().count()  but it isn't const yet
+        padding = padding.saturating_sub(value.is_char_boundary(i) as usize);
+        i += 1;
+    }
+    let leading_len = match alignment {
+        Alignment::Left => 0,
+        Alignment::Center => padding / 2,
+        Alignment::Right => padding,
+    };
+    let fill_chars_len = fill_chars.len() / width;
+    // leading and trailing padding
+    (
+        fill_chars.split_at(leading_len * fill_chars_len).0,
+        fill_chars.split_at((padding - leading_len) * fill_chars_len).0,
+    )
 }
 
 impl<T: Copy> HybridFormatConstArg<T> {

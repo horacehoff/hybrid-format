@@ -12,6 +12,8 @@ Constant arguments (literals, `const` blocks, `SCREAMING_SNAKE_CASE` names, cons
 
 Format specs (fill, align, precision, ...) are in the process of being implemented.
 
+Padding (width, fill, and alignment) will be available in 0.3.0.
+
 You can essentially type any expression inside `{}`, it doesn't require an inner block.
 
 The following types can be formatted both at compile-time and runtime (the implementations are very optimized):
