@@ -8,6 +8,18 @@ use syn::{BinOp, Expr, Lit, LitStr, UnOp, ext::IdentExt, parse_macro_input};
 
 mod parser;
 
+struct FmtArg {
+    name: Option<proc_macro2::Ident>,
+    value: Expr,
+    is_const: bool,
+    used: bool,
+}
+
+enum Placeholder {
+    Argument(usize),
+    Inline(Expr),
+}
+
 struct HFormatInput {
     buf_tgt: Option<proc_macro2::TokenTree>,
     format_str: LitStr,
@@ -46,8 +58,11 @@ fn is_probably_const(expr: &Expr) -> bool {
                     )
                 })
         }
-        Expr::Paren(e) => is_probably_const(&e.expr),
-        Expr::Group(e) => is_probably_const(&e.expr),
+        Expr::Paren(syn::ExprParen { expr, .. })
+        | Expr::Group(syn::ExprGroup { expr, .. })
+        | Expr::Cast(syn::ExprCast { expr, .. })
+        | Expr::Field(syn::ExprField { base: expr, .. })
+        | Expr::Repeat(syn::ExprRepeat { expr, .. }) => is_probably_const(expr),
         Expr::Unary(unary_op) => {
             matches!(unary_op.op, UnOp::Neg(_) | UnOp::Not(_)) && is_probably_const(&unary_op.expr)
         }
@@ -69,8 +84,6 @@ fn is_probably_const(expr: &Expr) -> bool {
             ) && is_probably_const(&binary_op.left)
                 && is_probably_const(&binary_op.right)
         }
-        Expr::Cast(e) => is_probably_const(&e.expr),
-        Expr::Field(f) => is_probably_const(&f.base),
         Expr::Index(e) => is_probably_const(&e.expr) && is_probably_const(&e.index),
         Expr::If(e) => {
             is_probably_const(&e.cond)
@@ -83,7 +96,6 @@ fn is_probably_const(expr: &Expr) -> bool {
         Expr::Array(syn::ExprArray { elems, .. }) | Expr::Tuple(syn::ExprTuple { elems, .. }) => {
             elems.iter().all(is_probably_const)
         }
-        Expr::Repeat(e) => is_probably_const(&e.expr),
         Expr::MethodCall(e) => {
             is_probably_const(&e.receiver)
                 && e.args.iter().all(is_probably_const)
@@ -289,13 +301,14 @@ fn format_expr(
     hformat: &proc_macro2::TokenStream,
     expr: &Expr,
     (width, fill, alignment): (usize, char, Option<Alignment>),
+    is_const: bool,
 ) -> proc_macro2::TokenStream {
     let alignment = alignment.map(|alignment| match alignment {
         Alignment::Left => quote!(#hformat::Alignment::Left),
         Alignment::Center => quote!(#hformat::Alignment::Center),
         Alignment::Right => quote!(#hformat::Alignment::Right),
     });
-    if is_probably_const(expr) {
+    if is_const {
         let expr = get_literal_type(expr)
             .map_or_else(|| quote!(#expr), |literal_type| quote!((#expr) as #literal_type));
         let value = quote!(const {#hformat::__private::HybridFormatConstArg(#expr).format_const()}.as_const_arg());
@@ -351,40 +364,41 @@ pub fn hformat(input: TokenStream) -> TokenStream {
         Err(msg) => return compile_error(span, msg),
     };
 
-    let mut named_arguments = Vec::new();
-    let mut arg_values = Vec::new();
+    let mut named_arguments = false;
+    let mut arguments = Vec::with_capacity(args.len());
     let mut runtime_bindings = Vec::new();
     for (i, arg) in args.into_iter().enumerate() {
-        let name = if let Expr::Assign(assign) = &arg
-            && let Expr::Path(path) = assign.left.as_ref()
-            && let Some(ident) = path.path.get_ident()
-        {
-            Some(ident.unraw())
-        } else {
-            None
-        };
-        let value = match arg {
-            Expr::Assign(assign) if name.is_some() => *assign.right,
-            _ if named_arguments.last().is_some_and(Option::is_some) => {
-                return compile_error(
-                    span,
-                    "positional arguments cannot follow named arguments".into(),
-                );
+        let (name, value) = match arg {
+            Expr::Assign(assign) => {
+                if let Expr::Path(path) = assign.left.as_ref()
+                    && let Some(ident) = path.path.get_ident()
+                {
+                    (Some(ident.unraw()), *assign.right)
+                } else {
+                    (None, Expr::Assign(assign))
+                }
             }
-            val => val,
+            val => (None, val),
         };
-        arg_values.push(if is_probably_const(&value) {
+        if name.is_none() && named_arguments {
+            return compile_error(
+                span,
+                "positional arguments cannot follow named arguments".into(),
+            );
+        }
+        named_arguments |= name.is_some();
+        let is_const = is_probably_const(&value);
+        let value = if is_const {
             value
         } else {
             let arg_binding =
                 quote::format_ident!("__hybrid_format_arg{}", i, span = Span::mixed_site());
             runtime_bindings.push(quote!(let #arg_binding = &(#value);));
             syn::parse_quote!(#arg_binding)
-        });
-        named_arguments.push(name);
+        };
+        arguments.push(FmtArg { name, value, is_const, used: false });
     }
 
-    let mut used = vec![false; arg_values.len()];
     let mut next_positional = 0;
     let mut format_tokens = Vec::new();
     for part in format_parts {
@@ -394,24 +408,22 @@ pub fn hformat(input: TokenStream) -> TokenStream {
                 let Some(padding) = spec.get_padding() else {
                     return compile_error(span, "this format spec isn't supported yet".into());
                 };
-                let index = match arg {
+                let placeholder_tgt = match arg {
                     parser::Argument::NextPositional => {
                         let curr_idx = next_positional;
                         next_positional += 1;
-                        curr_idx
+                        Placeholder::Argument(curr_idx)
                     }
-                    parser::Argument::Index(idx) => idx,
+                    parser::Argument::Index(idx) => Placeholder::Argument(idx),
                     parser::Argument::Expression(e) => {
-                        if let Some(idx) = named_arguments
+                        if let Some(idx) = arguments
                             .iter()
-                            .position(|name| name.as_ref().is_some_and(|name| *name == e))
+                            .position(|arg| arg.name.as_ref().is_some_and(|name| *name == e))
                         {
-                            idx
+                            Placeholder::Argument(idx)
                         } else {
                             match LitStr::new(&e, span).parse::<Expr>() {
-                                Ok(expr) => {
-                                    format_tokens.push(format_expr(&hformat, &expr, padding));
-                                }
+                                Ok(expr) => Placeholder::Inline(expr),
                                 Err(err) => {
                                     return compile_error(
                                         span,
@@ -419,19 +431,25 @@ pub fn hformat(input: TokenStream) -> TokenStream {
                                     );
                                 }
                             }
-                            continue;
                         }
                     }
                 };
-                let Some(tokens) = arg_values.get(index) else {
-                    return compile_error(span, format!("unknown argument {index}"));
-                };
-                used[index] = true;
-                format_tokens.push(format_expr(&hformat, tokens, padding));
+                format_tokens.push(match placeholder_tgt {
+                    Placeholder::Argument(idx) => {
+                        let Some(arg) = arguments.get_mut(idx) else {
+                            return compile_error(span, format!("unknown argument {idx}"));
+                        };
+                        arg.used = true;
+                        format_expr(&hformat, &arg.value, padding, arg.is_const)
+                    }
+                    Placeholder::Inline(expr) => {
+                        format_expr(&hformat, &expr, padding, is_probably_const(&expr))
+                    }
+                });
             }
         }
     }
-    if used.iter().any(|used| !used) {
+    if !arguments.iter().all(|arg| arg.used) {
         return compile_error(span, "argument never used".into());
     }
 

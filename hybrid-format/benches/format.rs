@@ -17,24 +17,20 @@ fn format_benchmarks(c: &mut Criterion) {
     let f = 42.67_67_67;
     let name = "Horace";
     group.bench_function("std", |b| {
-        b.iter(|| {
-            format!(
-                "Hello {}, n={}, f={}",
-                black_box(name),
-                black_box(n),
-                black_box(f)
-            )
-        });
+        b.iter(|| format!("Hello {}, n={}, f={}", black_box(name), black_box(n), black_box(f)));
     });
     group.bench_function("hybridformat", |b| {
-        b.iter(|| {
-            hformat!(
-                "Hello {}, n={}, f={}",
-                black_box(name),
-                black_box(n),
-                black_box(f)
-            )
-        });
+        b.iter(|| hformat!("Hello {}, n={}, f={}", black_box(name), black_box(n), black_box(f)));
+    });
+    group.finish();
+
+    let mut group = c.benchmark_group("all_dynamic_padding");
+    let name = "Deep Thought";
+    group.bench_function("std", |b| {
+        b.iter(|| format!("Hello {:-<5}!", black_box(name),));
+    });
+    group.bench_function("hybridformat", |b| {
+        b.iter(|| hformat!("Hello {:-<5}!", black_box(name)));
     });
     group.finish();
 

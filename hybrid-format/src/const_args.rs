@@ -85,6 +85,7 @@ pub const fn default_alignment<T: HybridFormat>(_: &'static T) -> Alignment {
 
 #[doc(hidden)]
 #[must_use]
+#[inline]
 pub const fn const_format_padding(
     fill_chars: &'static str,
     width: usize,
