@@ -28,6 +28,7 @@ impl<T: HybridFormat> HybridFormat for Padded<T> {
     }
 }
 
+#[doc(hidden)]
 unsafe impl<T: Formatted> Formatted for Padded<T> {
     #[inline(always)]
     fn size(&self) -> usize {
@@ -48,6 +49,36 @@ unsafe impl<T: Formatted> Formatted for Padded<T> {
 }
 
 #[inline(never)]
+#[doc(hidden)]
+unsafe fn count_chars(value_start: *mut u8, value_len: usize) -> usize {
+    unsafe {
+        str::from_utf8_unchecked(core::slice::from_raw_parts(value_start, value_len))
+            .chars()
+            .count()
+    }
+}
+
+#[inline(always)]
+#[doc(hidden)]
+unsafe fn write_fill_chars(dst: *mut u8, count: usize, fill_char: char) -> *mut u8 {
+    unsafe {
+        if fill_char.is_ascii() {
+            dst.write_bytes(fill_char as u8, count);
+            dst.add(count)
+        } else {
+            let fill_char_len = fill_char.len_utf8();
+            let mut dst = dst;
+            for _ in 0..count {
+                fill_char.encode_utf8(core::slice::from_raw_parts_mut(dst, fill_char_len));
+                dst = dst.add(fill_char_len);
+            }
+            dst
+        }
+    }
+}
+
+#[inline(always)]
+#[doc(hidden)]
 unsafe fn format_padding(
     value_start: *mut u8,
     value_end: *mut u8,
@@ -56,36 +87,19 @@ unsafe fn format_padding(
     alignment: Alignment,
 ) -> *mut u8 {
     unsafe {
-        let value_len = str::from_utf8_unchecked(core::slice::from_raw_parts(
-            value_start,
-            value_end.offset_from_unsigned(value_start),
-        ))
-        .chars()
-        .count();
-        let pad = width.saturating_sub(value_len);
-        let fill_char_len = fill_char.len_utf8();
-        let padded_end = if fill_char.is_ascii() {
-            value_end.write_bytes(fill_char as u8, pad);
-            value_end.add(pad)
-        } else {
-            let mut fill = [0u8; 4];
-            fill_char.encode_utf8(&mut fill);
-            (0..pad).fold(value_end, |dst, _| {
-                dst.cast::<[u8; 4]>().write(fill);
-                dst.add(fill_char_len)
-            })
-        };
-        // Moves all(right)/half(center) of the padding chars to the start (left alignment doesn't do anything)
-        core::slice::from_raw_parts_mut(value_start, padded_end.offset_from_unsigned(value_start))
-            .rotate_right(
-                fill_char_len
-                    * match alignment {
-                        Alignment::Left => 0,
-                        Alignment::Center => pad / 2,
-                        Alignment::Right => pad,
-                    },
-            );
-        padded_end
+        let value_len = value_end.offset_from_unsigned(value_start);
+        let value_char_len = count_chars(value_start, value_len);
+        if value_char_len >= width {
+            return value_end;
+        }
+        let pad_len = width - value_char_len;
+        let left_len = alignment as usize * pad_len / 2;
+        let left_byte_len = left_len * fill_char.len_utf8();
+        if left_len != 0 {
+            core::ptr::copy(value_start, value_start.add(left_byte_len), value_len);
+        }
+        write_fill_chars(value_start, left_len, fill_char);
+        write_fill_chars(value_start.add(left_byte_len + value_len), pad_len - left_len, fill_char)
     }
 }
 
