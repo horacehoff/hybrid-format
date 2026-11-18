@@ -301,6 +301,24 @@ fn get_literal_type(expr: &Expr) -> Option<proc_macro2::TokenStream> {
             BinOp::Shl(_) | BinOp::Shr(_) => get_literal_type(&binary_op.left),
             _ => get_literal_type(&binary_op.left).and_then(|_| get_literal_type(&binary_op.right)),
         },
+        Expr::Block(syn::ExprBlock { block, .. })
+        | Expr::Const(syn::ExprConst { block, .. })
+        | Expr::Unsafe(syn::ExprUnsafe { block, .. })
+            if let Some(syn::Stmt::Expr(last, None)) = block.stmts.last() =>
+        {
+            get_literal_type(last)
+        }
+        Expr::If(e) if let Some(syn::Stmt::Expr(last, None)) = e.then_branch.stmts.last() => {
+            get_literal_type(last).and_then(|_| get_literal_type(&e.else_branch.as_ref()?.1))
+        }
+        Expr::Match(e) => {
+            e.arms.iter().map(|arm| get_literal_type(&arm.body)).reduce(Option::and)?
+        }
+        Expr::Index(e) => match e.expr.as_ref() {
+            Expr::Array(array) => array.elems.iter().map(get_literal_type).reduce(Option::and)?,
+            Expr::Repeat(repeat) => get_literal_type(&repeat.expr),
+            _ => None,
+        },
         _ => None,
     }
 }
