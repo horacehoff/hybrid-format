@@ -290,7 +290,14 @@ fn get_literal_type(expr: &Expr) -> Option<proc_macro2::TokenStream> {
         Expr::Group(e) => get_literal_type(&e.expr),
         Expr::Unary(unary_op) => get_literal_type(&unary_op.expr),
         Expr::Binary(binary_op) => match binary_op.op {
-            BinOp::Or(_) | BinOp::And(_) => None,
+            BinOp::Or(_)
+            | BinOp::And(_)
+            | BinOp::Eq(_)
+            | BinOp::Ne(_)
+            | BinOp::Lt(_)
+            | BinOp::Le(_)
+            | BinOp::Gt(_)
+            | BinOp::Ge(_) => None,
             BinOp::Shl(_) | BinOp::Shr(_) => get_literal_type(&binary_op.left),
             _ => get_literal_type(&binary_op.left).and_then(|_| get_literal_type(&binary_op.right)),
         },
@@ -464,16 +471,17 @@ pub fn hformat(input: TokenStream) -> TokenStream {
         return compile_error(span, "argument never used".into());
     }
 
-    let runtime_bindings =
-        arguments.iter().enumerate().filter(|(_, arg)| arg.runtime).map(|(idx, arg)| {
-            let arg_binding = runtime_binding(idx);
-            let value = &arg.value;
-            quote!(let #arg_binding = &(#value);)
-        });
+    let (runtime_bindings, values): (Vec<_>, Vec<_>) = arguments
+        .iter()
+        .enumerate()
+        .filter(|(_, arg)| arg.runtime)
+        .map(|(idx, arg)| (runtime_binding(idx), &arg.value))
+        .unzip();
 
-    quote::quote! {{
-        #(#runtime_bindings)*
-        #hformat::__hformat_internal!(#buf_tgt #(#format_tokens),*)
-    }}
+    quote::quote! {
+        match (#(&(#values),)*) {
+            (#(#runtime_bindings,)*) => #hformat::__hformat_internal!(#buf_tgt #(#format_tokens),*)
+        }
+    }
     .into()
 }

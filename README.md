@@ -25,7 +25,7 @@ const ANSWER: &str = hformat!("{NUMBER} == the answer == {@something()}");
 let my_name = "Horace";
 let message = hformat!("Hello {my_name}. {NUMBER}!");
 
-// `hwrite!` appends to an existing Stirng.
+// `hwrite!` appends to an existing String.
 let mut answers = String::new();
 hwrite!(answers, "0: {ANSWER}");
 ```

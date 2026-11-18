@@ -197,7 +197,11 @@ fn parse_quantity(chars: &mut Peekable<Chars>) -> Result<Option<Quantity>, Strin
     let int = || word.parse::<usize>().map_err(|_| format!("`{word}` is not a valid `usize`"));
     let quantity = match (is_int, is_parameter) {
         (true, true) => Quantity::Parameter(Argument::Index(int()?)),
-        (true, false) => Quantity::Int(int()?),
+        (true, false) => {
+            // just the same error message as format!
+            let val = word.parse::<u16>().map_err(|_| format!("invalid format string: integer `{word}` does not fit into the type `u16` whose range is `0..=65535`"))?;
+            Quantity::Int(usize::from(val))
+        }
         (false, true) if !word.is_empty() => Quantity::Parameter(Argument::Expression(word)),
         _ => return Ok(None),
     };

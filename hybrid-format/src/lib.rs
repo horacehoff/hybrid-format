@@ -12,9 +12,9 @@ pub use const_args::ConstFormattedString;
 pub enum Alignment {
     /// Indication that contents should be left-aligned.
     Left,
-    /// Indication that contents should be right-aligned.
-    Center,
     /// Indication that contents should be center-aligned.
+    Center,
+    /// Indication that contents should be right-aligned.
     Right,
 }
 
@@ -119,7 +119,7 @@ pub trait HybridFormat {
 /// let my_name = "Horace";
 /// let message = hformat!("Hello {my_name}. {NUMBER}!");
 ///
-/// // `hwrite!` appends to an existing Stirng.
+/// // `hwrite!` appends to an existing String.
 /// let mut answers = String::new();
 /// hwrite!(answers, "0: {ANSWER}");
 /// ```
@@ -128,7 +128,7 @@ pub trait HybridFormat {
 /// The [format spec](https://doc.rust-lang.org/std/fmt/index.html) (fill, align, precision, ...) is in the process of being implemented.
 /// Currently, only padding (width, fill, and alignment) is available.
 ///
-/// The following types can be formatted both at compile time and runtime (the implementations are very optimized) and you can [add your own](#custom-types):
+/// The following types can be formatted both at compile time and runtime (the implementations are very optimized) and you can [add your own](crate#custom-types):
 /// - `&str`
 /// - `bool`
 /// - `char`
