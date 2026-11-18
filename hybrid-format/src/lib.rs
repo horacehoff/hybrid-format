@@ -97,7 +97,10 @@ pub trait HybridFormat {
     fn format(&self) -> Self::Formatted<'_>;
 }
 
-/// `hformat!` is a [`format!`](https://doc.rust-lang.org/std/macro.format.html) alternative that formats constants at compile time. It's **3x faster** with runtime arguments, **8x faster** with mixed arguments, and there's **no runtime formatting** for constants ([benchmarks](crate#benchmarks)).
+/// `hformat!` is a [`format!`](https://doc.rust-lang.org/std/macro.format.html) alternative that formats constants at compile time.
+///
+/// It's **3x faster** with runtime arguments, **8x faster** with mixed arguments, and there's **no runtime formatting** for constants ([benchmarks](crate#benchmarks)).
+///
 /// ```rust
 /// use hybrid_format::{hformat, hwrite};
 ///

@@ -114,17 +114,16 @@ pub fn parse_format_string(string: &str) -> Result<Vec<FormatPart>, String> {
 
 fn parse_formatting_argument(chars: &mut Peekable<Chars>) -> Result<FormatPart, String> {
     let (expr, has_spec) = parse_argument(chars)?;
-    let (expr, force_const) = match expr.strip_prefix('@') {
-        Some(stripped) => (stripped.trim_start(), true),
-        None => (expr.as_str(), false),
-    };
+    let (expr, force_const) = expr
+        .strip_prefix('@')
+        .map_or((expr.as_str(), false), |stripped| (stripped.trim_start(), true));
     Ok(FormatPart::Placeholder {
         arg: if expr.is_empty() {
             Argument::NextPositional
         } else if let Ok(idx) = expr.parse() {
             Argument::Index(idx)
         } else {
-            Argument::Expression(expr.to_string())
+            Argument::Expression(expr.to_owned())
         },
         spec: if has_spec { parse_spec(chars)? } else { FormatSpec::default() },
         force_const,
