@@ -8,10 +8,14 @@ mod impls;
 pub use const_args::ConstFormattedString;
 
 #[derive(Clone, Copy)]
+/// Text alignment. Borrowed from [`core::fmt::Alignment`].
 pub enum Alignment {
-    Left = 0,
-    Center = 1,
-    Right = 2,
+    /// Indication that contents should be left-aligned.
+    Left,
+    /// Indication that contents should be right-aligned.
+    Center,
+    /// Indication that contents should be center-aligned.
+    Right,
 }
 
 /// A not-yet-formatted value, that knows its formatted size, and can format(write) itself into a buffer without any reallocations.

@@ -3,24 +3,23 @@
 [![crates-io](https://img.shields.io/crates/v/hybrid-format.svg)](https://crates.io/crates/hybrid-format)
 [![api-docs](https://docs.rs/hybrid-format/badge.svg)](https://docs.rs/hybrid-format/*)
 
-Rust 1.95+, `no_std` (runtime formatting needs an allocator)
+> Rust 1.95+ (1.100+ in 0.3.0+); `no_std` (runtime formatting needs an allocator)
 
-`hformat!` macro that formats a string like [`format!`](https://doc.rust-lang.org/std/macro.format.html), but faster.
-There is also `hwrite!`, the `hformat!` equivalent of the `write!` macro.
+`hformat!` formats a string like [`format!`](https://doc.rust-lang.org/std/macro.format.html), but faster.
+`hwrite!` does the same thing, but appends to an existing String instead.
 
-Constant arguments (literals, `const` blocks, `SCREAMING_SNAKE_CASE` names, constant macros like `env!`, `concat!`, and any expressions built only from those with arithmetic, bitwise/logical operators, casts, field access, or indexing where all operands are constant) are formatted at compile time. If every argument is a constant, the macro outputs a `&'static str`, otherwise it outputs a `String` built with a single allocation.
+Constant arguments are formatted at compile time (NOTE: the way constant arguments are detected is constantly expanding, but it isn't perfect. As such, you might need to wrap your argument in a `const` block. There might also be false positives, which should be reported as an issue here).
 
-Format specs (fill, align, precision, ...) are in the process of being implemented.
+If every argument is a constant, the macro outputs a `&'static str`, otherwise it outputs a `String` built in a single allocation.
 
+The [format spec](https://doc.rust-lang.org/std/fmt/index.html) (fill, align, precision, ...) is in the process of being implemented.
 Padding (width, fill, and alignment) will be available in 0.3.0.
 
-You can essentially type any expression inside `{}`, it doesn't require an inner block.
-
-The following types can be formatted both at compile-time and runtime (the implementations are very optimized):
+The following types can be formatted both at compile-time and runtime (the implementations are very optimized) and you can [add your own](#custom-types):
 - `&str`
 - `bool`
 - `char`
-- `f32`/`f64`
+- `f32`/`f64` (whole-number floats keep a trailing `.0`, and very small/large values use scientific notation, like `4.2e+67`)
 - `i8`,`i16`,`i32`,`i64`,`i128`,`isize`,`u8`,`u16`,`u32`,`u64`,`u128`,`usize`
 
 ## Install
@@ -29,6 +28,7 @@ cargo add hybrid-format
 ```
 
 ## Usage
+Like `format!`, to type the character `{` and `}`, type `{{` and `}}`.
 ```rust
 use hybrid_format::hformat;
 const MY_INT: i32 = 42;
@@ -67,7 +67,16 @@ assert_eq!(
 );
 ```
 
-## Compile-time formatting
+## Benchmarks
+| Benchmark | `std::format!` | `hformat!` | Speedup compared to `std::format!` |
+| -------- | ------- | ------- | ------- |
+| `format!("Hello, world!")`  | 13.4ns | 311.2ps (just a &'static str) | 43x |
+| `all_dynamic` (`i32`, `f64`, `&str`) | 117ns | 36ns | 3.25x |
+| `ten_const_ten_dynamic` (`f64`, `i32`, `bool`, `&str`, `char`) | 446.8ns | 55ns | 8.12x |
+
+
+## Custom types
+### Compile-time
 To format your own types at compile-time, you need to pass a `ConstFormattedString` literal/constant or a function that returns a `ConstFormattedString`.
 ```rust ignore
 impl<const N: usize> ConstFormattedString<N> {
@@ -94,8 +103,7 @@ impl<const N: usize> ConstFormattedString<N> {
     pub const fn push_isize(self, n: isize) -> Self;
 }
 ```
-
-### Example
+#### Example
 ```rust
 use hybrid_format::{hformat, ConstFormattedString};
 struct Person {
@@ -141,10 +149,7 @@ fn main() {
     );
 }
 ```
-
-## Runtime formatting
-The built-in implementations aim to be as fast as possible.
-
+### Runtime
 To format your own types at runtime, use those two traits:
 ```rust ignore
 /// A not-yet-formatted value, that knows its formatted size, and can format(write) itself into a buffer without any reallocations.
@@ -152,6 +157,8 @@ To format your own types at runtime, use those two traits:
 /// It is up to you to make sure that `size()` returns the exact or maximum size of your object when formatted (in bytes)!
 /// `append()` uses this assumption to skip checks and avoid reallocation.
 pub unsafe trait Formatted {
+    /// The default alignment. This is overwritten by integers and floats.
+    const DEFAULT_ALIGNMENT: hybrid_format::Alignment = hybrid_format::Alignment::Left;
     /// The size of the object when formatted in bytes. Needs to be exact or at least an upper bound.
     fn size(&self) -> usize;
     /// Writes the formatted object to `buf` and returns the pointer past the last byte written.
@@ -169,36 +176,4 @@ pub trait HybridFormat {
     fn format(&self) -> Self::Formatted<'_>;
 }
 ```
-
-## Limitations / Quirks
-- To type the character `{`, type `{{` (like the `format!()` macro)
-- To type the character `}`, type `}}` (like the `format!()` macro)
-- Format specs aren't supported yet (they can only be parsed right now)
-- Whole-number floats keep a trailing `.0`, and very small/large values use scientific notation (like `4.2e+67`)
-
-The goal is to eventually fully support [https://doc.rust-lang.org/std/fmt/index.html](https://doc.rust-lang.org/std/fmt/index.html):
-```text
-format_string := text [ maybe_format text ] *
-maybe_format := '{' '{' | '}' '}' | format
-format := '{' [ argument ] [ ':' format_spec ] [ ws ] * '}'
-argument := integer | identifier
-
-format_spec := [[fill]align][sign]['#']['0'][width]['.' precision][type]
-fill := character
-align := '<' | '^' | '>'
-sign := '+' | '-'
-width := count
-precision := count | '*'
-type := '?' | 'x?' | 'X?' | 'o' | 'x' | 'X' | 'p' | 'b' | 'e' | 'E'
-count := parameter | integer
-parameter := argument '$'
-```
-
-## Benchmarks
-| Benchmark | `std::format!` | `hformat!` | Speedup compared to `std::format!` |
-| -------- | ------- | ------- | ------- |
-| `format!("Hello, world!")`  | 13.4ns | 311.2ps (just a &'static str) | 43x |
-| `all_dynamic` (`i32`, `f64`, `&str`) | 117ns | 36ns | 3.25x |
-| `ten_const_ten_dynamic` (`f64`, `i32`, `bool`, `&str`, `char`) | 446.8ns | 55ns | 8.12x |
-
 Ad astra per aspera!

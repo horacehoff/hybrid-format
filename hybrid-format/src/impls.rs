@@ -12,6 +12,7 @@ pub struct Padded<T> {
     pub alignment: Option<Alignment>,
 }
 
+#[doc(hidden)]
 impl<T: HybridFormat> HybridFormat for Padded<T> {
     type Formatted<'a>
         = Padded<T::Formatted<'a>>
