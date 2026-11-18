@@ -3,23 +3,43 @@
 [![crates-io](https://img.shields.io/crates/v/hybrid-format.svg)](https://crates.io/crates/hybrid-format)
 [![api-docs](https://docs.rs/hybrid-format/badge.svg)](https://docs.rs/hybrid-format/*)
 
-> Rust 1.95+ (1.100+ in 0.3.0+); `no_std` (runtime formatting needs an allocator)
+> Rust 1.100+; `no_std` (runtime formatting needs an allocator)
 
-`hformat!` formats a string like [`format!`](https://doc.rust-lang.org/std/macro.format.html), but faster.
-`hwrite!` does the same thing, but appends to an existing String instead.
+`hformat!` is a [`format!`](https://doc.rust-lang.org/std/macro.format.html) alternative that formats constants at compile time. It's **3x faster** with runtime arguments, **8x faster** with mixed arguments, and outputs a `&'static str` with all-constant arguments ([benchmarks](#benchmarks)).
 
-Constant arguments are formatted at compile time (NOTE: the way constant arguments are detected is constantly expanding, but it isn't perfect. As such, you might need to wrap your argument in a `const` block. There might also be false positives, which should be reported as an issue here).
+```rust
+use hybrid_format::{hformat, hwrite};
 
-If every argument is a constant, the macro outputs a `&'static str`, otherwise it outputs a `String` built in a single allocation.
+const NUMBER: f64 = 42.0;
+const fn something() -> &'static str { "42" }
+
+// Constants are always formatted at compile time.
+// They are detected automatically, but if detection misses,
+// the placeholder prefix `@` forces compile-time formatting.
+
+// Constants only -> a `&'static str`.
+const ANSWER: &str = hformat!("{NUMBER} == the answer == {@something()}");
+
+// Mixed -> a String built in a single allocation.
+// Here, only `my_name` is formatted at runtime.
+let my_name = "Horace";
+let message = hformat!("Hello {my_name}. {NUMBER}!");
+
+// `hwrite!` appends to an existing Stirng.
+let mut answers = String::new();
+hwrite!(answers, "0: {ANSWER}");
+```
+
+Adjacent constants and literal text are merged at compile time, so each merged string costs a single string copy. Please [report any constant detection false positives](https://github.com/horacehoff/hybrid-format/issues).
 
 The [format spec](https://doc.rust-lang.org/std/fmt/index.html) (fill, align, precision, ...) is in the process of being implemented.
-Padding (width, fill, and alignment) will be available in 0.3.0.
+Currently, only padding (width, fill, and alignment) is available.
 
-The following types can be formatted both at compile-time and runtime (the implementations are very optimized) and you can [add your own](#custom-types):
+The following types can be formatted both at compile time and runtime (the implementations are very optimized) and you can [add your own](#custom-types):
 - `&str`
 - `bool`
 - `char`
-- `f32`/`f64` (whole-number floats keep a trailing `.0`, and very small/large values use scientific notation, like `4.2e+67`)
+- `f32`/`f64` (whole-number floats keep a trailing `.0` and extreme values are formatted like `4.2e+67`)
 - `i8`,`i16`,`i32`,`i64`,`i128`,`isize`,`u8`,`u16`,`u32`,`u64`,`u128`,`usize`
 
 ## Install

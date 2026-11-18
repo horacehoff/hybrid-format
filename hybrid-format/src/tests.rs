@@ -7,7 +7,7 @@ fn int_const_literal() {
 #[test]
 fn int_const_variable() {
     const MY_INT: i32 = 42;
-    assert_eq!(const { hformat!("{}", MY_INT) }, format!("{MY_INT}"));
+    assert_eq!(const { hformat!("{@}", MY_INT) }, format!("{MY_INT}"));
 }
 #[test]
 fn int_dynamic() {

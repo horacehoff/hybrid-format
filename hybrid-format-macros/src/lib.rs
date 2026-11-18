@@ -13,6 +13,7 @@ struct FmtArg {
     value: Expr,
     is_const: bool,
     used: bool,
+    runtime: bool,
 }
 
 enum Placeholder {
@@ -315,8 +316,8 @@ fn format_expr(
         if width == 0 {
             return value;
         }
-        let alignment =
-            alignment.unwrap_or_else(|| quote!(#hformat::__private::default_alignment(&(#expr))));
+        let alignment = alignment
+            .unwrap_or_else(|| quote!(#hformat::__private::default_alignment(&(const{#expr}))));
         let fill_chars = fill.to_string().repeat(width);
         let const_padding = quote!(#hformat::__private::const_format_padding(#fill_chars, #width, #hformat::__private::const_format::concatcp!((#value)), #alignment));
         quote!(const {#const_padding.0}, #value, const {#const_padding.1})
@@ -351,6 +352,11 @@ fn compile_error(span: Span, message: String) -> TokenStream {
     syn::Error::new(span, message).into_compile_error().into()
 }
 
+#[inline(always)]
+fn runtime_binding(idx: usize) -> proc_macro2::Ident {
+    quote::format_ident!("__hybrid_format_arg{}", idx, span = Span::mixed_site())
+}
+
 #[doc(hidden)]
 #[proc_macro]
 #[inline]
@@ -366,8 +372,7 @@ pub fn hformat(input: TokenStream) -> TokenStream {
 
     let mut named_arguments = false;
     let mut arguments = Vec::with_capacity(args.len());
-    let mut runtime_bindings = Vec::new();
-    for (i, arg) in args.into_iter().enumerate() {
+    for arg in args {
         let (name, value) = match arg {
             Expr::Assign(assign) => {
                 if let Expr::Path(path) = assign.left.as_ref()
@@ -387,16 +392,13 @@ pub fn hformat(input: TokenStream) -> TokenStream {
             );
         }
         named_arguments |= name.is_some();
-        let is_const = is_probably_const(&value);
-        let value = if is_const {
-            value
-        } else {
-            let arg_binding =
-                quote::format_ident!("__hybrid_format_arg{}", i, span = Span::mixed_site());
-            runtime_bindings.push(quote!(let #arg_binding = &(#value);));
-            syn::parse_quote!(#arg_binding)
-        };
-        arguments.push(FmtArg { name, value, is_const, used: false });
+        arguments.push(FmtArg {
+            name,
+            is_const: is_probably_const(&value),
+            value,
+            used: false,
+            runtime: false,
+        });
     }
 
     let mut next_positional = 0;
@@ -404,7 +406,7 @@ pub fn hformat(input: TokenStream) -> TokenStream {
     for part in format_parts {
         match part {
             parser::FormatPart::Text(text) => format_tokens.push(quote!(#text)),
-            parser::FormatPart::Placeholder { arg, spec } => {
+            parser::FormatPart::Placeholder { arg, spec, force_const } => {
                 let Some(padding) = spec.get_padding() else {
                     return compile_error(span, "this format spec isn't supported yet".into());
                 };
@@ -440,11 +442,20 @@ pub fn hformat(input: TokenStream) -> TokenStream {
                             return compile_error(span, format!("unknown argument {idx}"));
                         };
                         arg.used = true;
-                        format_expr(&hformat, &arg.value, padding, arg.is_const)
+                        if force_const || arg.is_const {
+                            format_expr(&hformat, &arg.value, padding, true)
+                        } else {
+                            arg.runtime = true;
+                            let arg_binding = runtime_binding(idx);
+                            format_expr(&hformat, &syn::parse_quote!(#arg_binding), padding, false)
+                        }
                     }
-                    Placeholder::Inline(expr) => {
-                        format_expr(&hformat, &expr, padding, is_probably_const(&expr))
-                    }
+                    Placeholder::Inline(expr) => format_expr(
+                        &hformat,
+                        &expr,
+                        padding,
+                        force_const || is_probably_const(&expr),
+                    ),
                 });
             }
         }
@@ -452,6 +463,13 @@ pub fn hformat(input: TokenStream) -> TokenStream {
     if !arguments.iter().all(|arg| arg.used) {
         return compile_error(span, "argument never used".into());
     }
+
+    let runtime_bindings =
+        arguments.iter().enumerate().filter(|(_, arg)| arg.runtime).map(|(idx, arg)| {
+            let arg_binding = runtime_binding(idx);
+            let value = &arg.value;
+            quote!(let #arg_binding = &(#value);)
+        });
 
     quote::quote! {{
         #(#runtime_bindings)*

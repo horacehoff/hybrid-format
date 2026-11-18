@@ -97,52 +97,40 @@ pub trait HybridFormat {
     fn format(&self) -> Self::Formatted<'_>;
 }
 
-/// Formats a string like [`format!`](https://doc.rust-lang.org/std/macro.format.html), but faster.
+/// `hformat!` is a [`format!`](https://doc.rust-lang.org/std/macro.format.html) alternative that formats constants at compile time. It's **3x faster** with runtime arguments, **8x faster** with mixed arguments, and there's **no runtime formatting** for constants ([benchmarks](crate#benchmarks)).
+/// ```rust
+/// use hybrid_format::{hformat, hwrite};
 ///
-/// Constant arguments (literals, `const` blocks, `SCREAMING_SNAKE_CASE` names) are formatted at compile time.
-/// If every argument is a constant, the macro outputs a `&'static str`, otherwise it outputs a `String` built with a single allocation.
+/// const NUMBER: f64 = 42.0;
+/// const fn something() -> &'static str { "42" }
 ///
-/// Format specs (fill, align, precision, ...) aren't supported yet.
+/// // Constants are always formatted at compile time.
+/// // They are detected automatically, but if detection misses,
+/// // the placeholder prefix `@` forces compile-time formatting.
 ///
-/// The following types can be formatted both at compile-time and runtime (the implementations are very optimized):
+/// // Constants only -> a `&'static str`.
+/// const ANSWER: &str = hformat!("{NUMBER} == the answer == {@something()}");
+///
+/// // Mixed -> a String built in a single allocation.
+/// // Here, only `my_name` is formatted at runtime.
+/// let my_name = "Horace";
+/// let message = hformat!("Hello {my_name}. {NUMBER}!");
+///
+/// // `hwrite!` appends to an existing Stirng.
+/// let mut answers = String::new();
+/// hwrite!(answers, "0: {ANSWER}");
+/// ```
+/// Adjacent constants and literal text are merged at compile time, so each "constant run" costs a single string copy. Please [report any constant detection false positives](https://github.com/horacehoff/hybrid-format/issues).
+///
+/// The [format spec](https://doc.rust-lang.org/std/fmt/index.html) (fill, align, precision, ...) is in the process of being implemented.
+/// Currently, only padding (width, fill, and alignment) is available.
+///
+/// The following types can be formatted both at compile time and runtime (the implementations are very optimized) and you can [add your own](#custom-types):
 /// - `&str`
 /// - `bool`
 /// - `char`
-/// - `f32`/`f64`
+/// - `f32`/`f64` (whole-number floats keep a trailing `.0` and extreme values are formatted like `4.2e+67`)
 /// - `i8`,`i16`,`i32`,`i64`,`i128`,`isize`,`u8`,`u16`,`u32`,`u64`,`u128`,`usize`
-///
-/// # Examples
-/// ```
-/// use hybrid_format::hformat;
-///
-/// assert_eq!(const { hformat!("{}", 42) }, format!("{}", 42)); // => "42"
-///
-/// const MY_INT: i32 = 42;
-/// assert_eq!(const { hformat!("{}", MY_INT) }, format!("{}", MY_INT)); // => "42"
-///
-/// let i = 2 + 2;
-/// assert_eq!(hformat!("{}", i), format!("{}", i)); // => "4"
-///
-/// assert_eq!(
-///     const { hformat!("Float: {}", 4.2) }, // => "Float: 4.2"
-///     format!("Float: {}", 4.2)
-/// );
-///
-/// const MY_FLOAT: f64 = 4.2;
-/// assert_eq!(
-///     const { hformat!("Float: {f}", f = MY_FLOAT) }, // => "Float: 4.2"
-///     format!("Float: {}", MY_FLOAT)
-/// );
-///
-/// const MY_BOOL: bool = true;
-/// const MY_STR: &str = "Hello, world!";
-/// let f = 4.2 + 6.7;
-/// let c = 'a';
-/// assert_eq!(
-///     hformat!("{MY_INT}:{MY_BOOL}:{MY_STR}:{f}:{c}"),
-///     format!("{MY_INT}:{MY_BOOL}:{MY_STR}:{f}:{c}")
-/// );
-/// ```
 #[macro_export]
 macro_rules! hformat {
     ($($args: tt)*) => {{

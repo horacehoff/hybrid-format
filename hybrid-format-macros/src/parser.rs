@@ -79,7 +79,7 @@ impl FormatSpec {
 
 pub enum FormatPart {
     Text(String),
-    Placeholder { arg: Argument, spec: FormatSpec },
+    Placeholder { arg: Argument, spec: FormatSpec, force_const: bool },
 }
 
 pub fn parse_format_string(string: &str) -> Result<Vec<FormatPart>, String> {
@@ -114,15 +114,20 @@ pub fn parse_format_string(string: &str) -> Result<Vec<FormatPart>, String> {
 
 fn parse_formatting_argument(chars: &mut Peekable<Chars>) -> Result<FormatPart, String> {
     let (expr, has_spec) = parse_argument(chars)?;
+    let (expr, force_const) = match expr.strip_prefix('@') {
+        Some(stripped) => (stripped.trim_start(), true),
+        None => (expr.as_str(), false),
+    };
     Ok(FormatPart::Placeholder {
         arg: if expr.is_empty() {
             Argument::NextPositional
         } else if let Ok(idx) = expr.parse() {
             Argument::Index(idx)
         } else {
-            Argument::Expression(expr)
+            Argument::Expression(expr.to_string())
         },
         spec: if has_spec { parse_spec(chars)? } else { FormatSpec::default() },
+        force_const,
     })
 }
 
